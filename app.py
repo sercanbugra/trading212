@@ -19,7 +19,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from bot import Bot, StockConfig
+from bot import Bot, StockConfig, STATE_FILE
 import price_feed as _pf
 from price_feed import PriceFeed
 from t212_client import Trading212Client
@@ -163,6 +163,35 @@ async def update_stock(ticker: str, req: StockRequest):
 async def remove_stock(ticker: str):
     bot.remove_stock(ticker)
     return {"ok": True}
+
+
+# ─── State import / export ───────────────────────────────────────────────────
+
+@app.get("/api/state/export")
+async def export_state():
+    """İndirilebilir ham state (hisse listesi + işlem geçmişi)"""
+    if not os.path.exists(STATE_FILE):
+        return {}
+    with open(STATE_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+@app.post("/api/state/import")
+async def import_state(request: Request):
+    """Ham state JSON'ını yükle ve botu yeniden başlat"""
+    data = await request.json()
+    os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    # Mevcut state'i temizle ve yeniden yükle
+    bot.stocks.clear()
+    bot.positions.clear()
+    bot.trades.clear()
+    bot.reference_prices.clear()
+    bot.reference_dates.clear()
+    bot.current_prices.clear()
+    bot.load_state()
+    return {"ok": True, "stocks": len(bot.stocks), "trades": len(bot.trades)}
 
 
 # ─── Price data ──────────────────────────────────────────────────────────────

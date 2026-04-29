@@ -6,7 +6,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from typing import Dict, List, Optional
 
-STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json")
+_data_dir = os.getenv("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
+STATE_FILE = os.path.join(_data_dir, "state.json")
 
 from price_feed import PriceFeed
 from t212_client import Trading212Client, Trading212Error
