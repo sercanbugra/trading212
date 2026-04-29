@@ -1,0 +1,34 @@
+# Ortam ve gizli bilgiler
+.env
+*.env
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Bot runtime dosyaları
+state.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

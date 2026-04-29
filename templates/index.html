@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="tr" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trading212 Bot</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+  <style>
+    :root { --bs-body-bg: #0d1117; --card-bg: #161b22; --border: #30363d; }
+    body { background: #0d1117; font-size: 0.875rem; }
+    .navbar { background: #161b22 !important; border-bottom: 1px solid var(--border); }
+    .card { background: var(--card-bg); border: 1px solid var(--border); }
+    .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .dot-running { background: #3fb950; box-shadow: 0 0 6px #3fb950; animation: pulse 1.5s infinite; }
+    .dot-stopped { background: #f85149; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .price-big { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
+    .price-change { font-size: 1rem; font-weight: 600; }
+    .pct-bar-wrap { height: 6px; background: #21262d; border-radius: 3px; position: relative; overflow: visible; }
+    .pct-bar-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+    .pct-marker { position: absolute; top: -4px; width: 2px; height: 14px; background: white; border-radius: 1px; }
+    .badge-signal { font-size: 0.7rem; }
+    .log-box { height: 260px; overflow-y: auto; font-family: monospace; font-size: 0.78rem;
+               background: #010409; border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+    .log-info    { color: #c9d1d9; }
+    .log-warning { color: #d29922; }
+    .log-error   { color: #f85149; }
+    .log-time    { color: #6e7681; margin-right: 6px; }
+    .trade-row-buy  { border-left: 3px solid #3fb950; }
+    .trade-row-sell { border-left: 3px solid #f85149; }
+    .ticker-badge { font-size: 1rem; font-weight: 700; letter-spacing: 1px; }
+    .section-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: #6e7681; }
+    .pos-card   { background: #0d2414; border: 1px solid #238636; border-radius: 6px; }
+    .no-pos-card { background: #1c1c1c; border: 1px solid var(--border); border-radius: 6px; }
+    .lang-btn { font-size: 0.75rem; padding: 2px 8px; }
+  </style>
+</head>
+<body>
+
+<!-- ── NAVBAR ─────────────────────────────────────────────────────── -->
+<nav class="navbar navbar-expand-lg px-3 py-2">
+  <span class="navbar-brand fw-bold text-white">
+    <i class="bi bi-robot me-2 text-primary"></i>Trading212 Bot
+  </span>
+  <div class="d-flex align-items-center gap-2 ms-auto flex-wrap">
+    <span id="statusBadge" class="text-secondary">
+      <span class="status-dot dot-stopped"></span><span data-i18n="nav.stopped">Durduruldu</span>
+    </span>
+    <span id="envBadge" class="badge bg-warning text-dark">DEMO</span>
+    <span id="apiStats" class="text-secondary" style="font-size:0.75rem" title="">
+      <i class="bi bi-graph-up me-1"></i><span id="apiTotal">0</span> <span data-i18n="nav.calls">çağrı</span>
+    </span>
+    <span id="accountBalance" class="text-secondary">— $</span>
+    <button id="btnStart" class="btn btn-sm btn-success" onclick="startBot()">
+      <i class="bi bi-play-fill"></i> <span data-i18n="nav.start">Başlat</span>
+    </button>
+    <button id="btnStop" class="btn btn-sm btn-danger d-none" onclick="stopBot()">
+      <i class="bi bi-stop-fill"></i> <span data-i18n="nav.stop">Durdur</span>
+    </button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="manualTick()" title="Tick">
+      <i class="bi bi-arrow-clockwise"></i>
+    </button>
+    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addStockModal">
+      <i class="bi bi-plus-lg"></i> <span data-i18n="nav.addStock">Hisse Ekle</span>
+    </button>
+    <!-- Dil seçici -->
+    <div class="btn-group" role="group">
+      <button id="btnTR" class="btn btn-sm btn-outline-light lang-btn active" onclick="setLang('tr')">TR</button>
+      <button id="btnEN" class="btn btn-sm btn-outline-light lang-btn" onclick="setLang('en')">EN</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ── MAIN ───────────────────────────────────────────────────────── -->
+<div class="container-fluid px-3 py-3">
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div id="stockGrid" class="row g-3">
+        <div class="col-12 text-center text-secondary py-5">
+          <i class="bi bi-hourglass-split fs-3"></i>
+          <div class="mt-2" data-i18n="ui.loading">Yükleniyor…</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-header d-flex align-items-center justify-content-between py-2">
+          <span class="fw-semibold"><i class="bi bi-terminal me-1"></i><span data-i18n="log.title">Aktivite Logu</span></span>
+          <button class="btn btn-sm btn-outline-secondary py-0" onclick="clearLogs()" data-i18n="log.clear">Temizle</button>
+        </div>
+        <div class="card-body p-0">
+          <div id="logBox" class="log-box"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header py-2">
+          <span class="fw-semibold"><i class="bi bi-receipt me-1"></i><span data-i18n="trades.title">İşlem Geçmişi</span></span>
+        </div>
+        <div class="card-body p-0" style="max-height:360px;overflow-y:auto">
+          <table class="table table-sm table-hover mb-0" id="tradesTable">
+            <thead class="sticky-top" style="background:#161b22">
+              <tr>
+                <th data-i18n="trades.time">Zaman</th>
+                <th data-i18n="trades.stock">Hisse</th>
+                <th data-i18n="trades.action">İşlem</th>
+                <th data-i18n="trades.qty">Miktar</th>
+                <th data-i18n="trades.price">Fiyat</th>
+                <th>P&amp;L</th>
+              </tr>
+            </thead>
+            <tbody id="tradesBody">
+              <tr><td colspan="6" class="text-center text-secondary py-3" data-i18n="trades.empty">Henüz işlem yok</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── ADD STOCK MODAL ────────────────────────────────────────────── -->
+<div class="modal fade" id="addStockModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" data-i18n="modal.addTitle">Hisse Ekle</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label" data-i18n="modal.ticker">Yahoo Finance Sembolü <span class="text-danger">*</span></label>
+          <input type="text" id="newTicker" class="form-control" />
+          <div class="form-text" data-i18n="modal.tickerHint">Büyük harf — yfinance'ta kullanılan sembol</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" data-i18n="modal.t212ticker">Trading212 Sembolü</label>
+          <input type="text" id="newT212Ticker" class="form-control" />
+          <div class="form-text" data-i18n="modal.t212hint">Boş bırakılırsa otomatik SEMBOL_US_EQ olur</div>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-4">
+            <label class="form-label" data-i18n="modal.buyDrop">Alım Düşüşü %</label>
+            <input type="number" id="newBuyDrop" class="form-control" value="10" min="0.1" step="0.1" />
+          </div>
+          <div class="col-4">
+            <label class="form-label" data-i18n="modal.stopLoss">Zarar Kes %</label>
+            <input type="number" id="newStopLoss" class="form-control" value="10" min="0.1" step="0.1" />
+          </div>
+          <div class="col-4">
+            <label class="form-label" data-i18n="modal.takeProfit">Kâr Al %</label>
+            <input type="number" id="newTakeProfit" class="form-control" value="10" min="0.1" step="0.1" />
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" data-i18n="modal.maxInv">Maks Yatırım ($)</label>
+          <input type="number" id="newMaxInv" class="form-control" value="1000" min="1" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="modal.cancel">İptal</button>
+        <button class="btn btn-primary" onclick="addStock()" data-i18n="modal.add">Ekle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── EDIT STOCK MODAL ───────────────────────────────────────────── -->
+<div class="modal fade" id="editStockModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editModalTitle">—</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editTicker" />
+        <div class="mb-3">
+          <label class="form-label" data-i18n="modal.t212ticker">Trading212 Sembolü</label>
+          <input type="text" id="editT212Ticker" class="form-control" />
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-4">
+            <label class="form-label" data-i18n="modal.buyDrop">Alım Düşüşü %</label>
+            <input type="number" id="editBuyDrop" class="form-control" min="0.1" step="0.1" />
+          </div>
+          <div class="col-4">
+            <label class="form-label" data-i18n="modal.stopLoss">Zarar Kes %</label>
+            <input type="number" id="editStopLoss" class="form-control" min="0.1" step="0.1" />
+          </div>
+          <div class="col-4">
+            <label class="form-label" data-i18n="modal.takeProfit">Kâr Al %</label>
+            <input type="number" id="editTakeProfit" class="form-control" min="0.1" step="0.1" />
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" data-i18n="modal.maxInv">Maks Yatırım ($)</label>
+          <input type="number" id="editMaxInv" class="form-control" min="1" />
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="editEnabled" />
+          <label class="form-check-label" for="editEnabled" data-i18n="modal.active">Aktif</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger me-auto" onclick="removeStock()" data-i18n="modal.remove">Kaldır</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="modal.cancel">İptal</button>
+        <button class="btn btn-primary" onclick="saveStock()" data-i18n="modal.save">Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ─── i18n ─────────────────────────────────────────────────────────────────
+const LANG = {
+  tr: {
+    'nav.running': 'Çalışıyor', 'nav.stopped': 'Durduruldu',
+    'nav.start': 'Başlat', 'nav.stop': 'Durdur',
+    'nav.addStock': 'Hisse Ekle', 'nav.calls': 'çağrı',
+    'log.title': 'Aktivite Logu', 'log.clear': 'Temizle',
+    'trades.title': 'İşlem Geçmişi', 'trades.time': 'Zaman',
+    'trades.stock': 'Hisse', 'trades.action': 'İşlem',
+    'trades.qty': 'Miktar', 'trades.price': 'Fiyat',
+    'trades.empty': 'Henüz işlem yok',
+    'trades.buy': 'ALIM', 'trades.sell': 'SATIŞ',
+    'trades.signal': 'Sinyal', 'trades.stopLoss': 'Zar.Kes',
+    'trades.takeProfit': 'Kâr Al', 'trades.manual': 'Manuel',
+    'modal.addTitle': 'Hisse Ekle', 'modal.cancel': 'İptal',
+    'modal.add': 'Ekle', 'modal.save': 'Kaydet', 'modal.remove': 'Kaldır',
+    'modal.ticker': 'Yahoo Finance Sembolü',
+    'modal.t212ticker': 'Trading212 Sembolü',
+    'modal.tickerHint': "Büyük harf — yfinance'ta kullanılan sembol",
+    'modal.t212hint': 'Boş bırakılırsa otomatik SEMBOL_US_EQ olur',
+    'modal.buyDrop': 'Alım Düşüşü %', 'modal.stopLoss': 'Zarar Kes %',
+    'modal.takeProfit': 'Kâr Al %', 'modal.maxInv': 'Maks Yatırım ($)',
+    'modal.active': 'Aktif',
+    'card.monitoring': 'İzleniyor', 'card.position': 'Pozisyon',
+    'card.signal': 'Sinyal!', 'card.passive': 'Pasif',
+    'card.dayOpen': 'Gün açılışı', 'card.dropLabel': 'DÜŞÜŞ / REFERANSTAN',
+    'card.openPos': 'Açık Pozisyon', 'card.entry': 'Alış:',
+    'card.noPos': 'Pozisyon yok — alım eşiği: referanstan -%',
+    'card.manualSell': 'Manuel Sat',
+    'card.buyBadge': 'Alım', 'card.slBadge': 'ZK', 'card.tpBadge': 'KA',
+    'ui.loading': 'Yükleniyor…', 'ui.noStocks': 'Henüz hisse eklenmedi',
+    'confirm.sell': 'pozisyonunu şu anki fiyattan satmak istediğinize emin misiniz?',
+    'confirm.remove': 'izleme listesinden kaldırılsın mı?',
+    'err.noPos': 'için açık pozisyon yok',
+    'err.addTicker': 'Sembol zorunlu',
+    'err.save': 'Kayıt hatası: ',
+  },
+  en: {
+    'nav.running': 'Running', 'nav.stopped': 'Stopped',
+    'nav.start': 'Start', 'nav.stop': 'Stop',
+    'nav.addStock': 'Add Stock', 'nav.calls': 'calls',
+    'log.title': 'Activity Log', 'log.clear': 'Clear',
+    'trades.title': 'Trade History', 'trades.time': 'Time',
+    'trades.stock': 'Stock', 'trades.action': 'Action',
+    'trades.qty': 'Qty', 'trades.price': 'Price',
+    'trades.empty': 'No trades yet',
+    'trades.buy': 'BUY', 'trades.sell': 'SELL',
+    'trades.signal': 'Signal', 'trades.stopLoss': 'Stop Loss',
+    'trades.takeProfit': 'Take Profit', 'trades.manual': 'Manual',
+    'modal.addTitle': 'Add Stock', 'modal.cancel': 'Cancel',
+    'modal.add': 'Add', 'modal.save': 'Save', 'modal.remove': 'Remove',
+    'modal.ticker': 'Yahoo Finance Symbol',
+    'modal.t212ticker': 'Trading212 Symbol',
+    'modal.tickerHint': 'Uppercase — symbol used in yfinance',
+    'modal.t212hint': 'Leave blank to auto-generate SYMBOL_US_EQ',
+    'modal.buyDrop': 'Buy Drop %', 'modal.stopLoss': 'Stop Loss %',
+    'modal.takeProfit': 'Take Profit %', 'modal.maxInv': 'Max Investment ($)',
+    'modal.active': 'Active',
+    'card.monitoring': 'Monitoring', 'card.position': 'Position',
+    'card.signal': 'Signal!', 'card.passive': 'Passive',
+    'card.dayOpen': 'Day open', 'card.dropLabel': 'DROP / FROM REFERENCE',
+    'card.openPos': 'Open Position', 'card.entry': 'Entry:',
+    'card.noPos': 'No position — buy threshold: -%',
+    'card.manualSell': 'Manual Sell',
+    'card.buyBadge': 'Buy', 'card.slBadge': 'SL', 'card.tpBadge': 'TP',
+    'ui.loading': 'Loading…', 'ui.noStocks': 'No stocks added yet',
+    'confirm.sell': 'Are you sure you want to sell this position at market price?',
+    'confirm.remove': 'Remove from watchlist?',
+    'err.noPos': 'has no open position',
+    'err.addTicker': 'Symbol is required',
+    'err.save': 'Save error: ',
+  }
+};
+
+let currentLang = localStorage.getItem('lang') || 'tr';
+
+function t(key) {
+  return (LANG[currentLang] || LANG.tr)[key] || key;
+}
+
+function setLang(lang) {
+  currentLang = lang;
+  localStorage.setItem('lang', lang);
+  document.documentElement.lang = lang;
+  document.getElementById('btnTR').classList.toggle('active', lang === 'tr');
+  document.getElementById('btnEN').classList.toggle('active', lang === 'en');
+  applyTranslations();
+  refreshLogLanguage();
+  if (lastState) renderAll(lastState);
+}
+
+function applyTranslations() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const val = t(key);
+    if (val) el.textContent = val;
+  });
+}
+
+// ─── State ────────────────────────────────────────────────────────────────
+let lastState = null;
+let displayedLogCount = 0;
+
+// ─── WebSocket ────────────────────────────────────────────────────────────
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage = e => { lastState = JSON.parse(e.data); renderAll(lastState); };
+  ws.onclose = () => setTimeout(connectWS, 3000);
+  setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 20000);
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────
+function renderAll(state) {
+  renderNav(state);
+  renderStocks(state.stocks);
+  renderLogs(state.logs);
+  renderTrades(state.trades);
+}
+
+function renderNav(state) {
+  if (state.api_stats) {
+    const s = state.api_stats;
+    document.getElementById('apiTotal').textContent = s.total;
+    document.getElementById('apiStats').title = `TD:${s.twelvedata} FH:${s.finnhub} YF:${s.yfinance} Err:${s.errors}`;
+  }
+  const badge = document.getElementById('statusBadge');
+  const btnStart = document.getElementById('btnStart');
+  const btnStop  = document.getElementById('btnStop');
+  if (state.running) {
+    badge.innerHTML = `<span class="status-dot dot-running"></span><span class="text-success fw-semibold">${t('nav.running')}</span>`;
+    btnStart.classList.add('d-none'); btnStop.classList.remove('d-none');
+  } else {
+    badge.innerHTML = `<span class="status-dot dot-stopped"></span><span class="text-danger">${t('nav.stopped')}</span>`;
+    btnStart.classList.remove('d-none'); btnStop.classList.add('d-none');
+  }
+}
+
+function renderStocks(stocks) {
+  const grid = document.getElementById('stockGrid');
+  const keys = Object.keys(stocks);
+  if (keys.length === 0) {
+    grid.innerHTML = `<div class="col-12 text-center text-secondary py-5">
+      <i class="bi bi-plus-circle fs-3"></i><div class="mt-2">${t('ui.noStocks')}</div></div>`;
+    return;
+  }
+  if (!document.querySelector('[id^="col-"]')) grid.innerHTML = '';
+  keys.forEach(ticker => {
+    if (!document.getElementById(`card-${ticker}`)) {
+      const col = document.createElement('div');
+      col.className = 'col-md-6 col-xl-4';
+      col.id = `col-${ticker}`;
+      col.innerHTML = buildCardHTML(ticker, stocks[ticker]);
+      grid.appendChild(col);
+    } else {
+      updateCard(ticker, stocks[ticker]);
+    }
+  });
+  document.querySelectorAll('[id^="col-"]').forEach(el => {
+    const tk = el.id.replace('col-', '');
+    if (!stocks[tk]) el.remove();
+  });
+}
+
+function buildCardHTML(ticker, s) {
+  return `
+  <div class="card h-100" id="card-${ticker}">
+    <div class="card-header d-flex align-items-center justify-content-between py-2">
+      <div class="d-flex align-items-center gap-2">
+        <span class="ticker-badge text-primary">${ticker}</span>
+        <span class="badge bg-secondary badge-signal" id="sig-${ticker}">${t('card.monitoring')}</span>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="openEdit('${ticker}')">
+        <i class="bi bi-gear"></i>
+      </button>
+    </div>
+    <div class="card-body pb-2">
+      <div class="d-flex align-items-baseline gap-3 mb-2">
+        <span class="price-big" id="price-${ticker}">—</span>
+        <span class="price-change" id="chg-${ticker}"></span>
+      </div>
+      <div class="d-flex justify-content-between text-secondary mb-3" style="font-size:0.78rem">
+        <span>${t('card.dayOpen')}: <span id="ref-${ticker}" class="text-white">—</span></span>
+        <span>T212: <code style="font-size:0.75rem" id="t212t-${ticker}">${s.t212_ticker}</code></span>
+      </div>
+      <div class="mb-1 section-label" id="dropLbl-${ticker}">${t('card.dropLabel')}</div>
+      <div class="pct-bar-wrap mb-3">
+        <div class="pct-bar-fill bg-danger" id="dropBar-${ticker}" style="width:0%"></div>
+        <div class="pct-marker" id="dropMarker-${ticker}" style="left:${pct2left(s.buy_drop_pct)}%"></div>
+      </div>
+      <div id="posSection-${ticker}"></div>
+      <div class="d-flex gap-2 mt-2" style="font-size:0.75rem">
+        <span class="badge bg-danger bg-opacity-25 text-danger-emphasis">
+          <i class="bi bi-arrow-down"></i> ${t('card.buyBadge')}: -%<span id="bd-${ticker}">${s.buy_drop_pct}</span>
+        </span>
+        <span class="badge bg-warning bg-opacity-25 text-warning-emphasis">
+          <i class="bi bi-shield"></i> ${t('card.slBadge')}: -%<span id="sl-${ticker}">${s.stop_loss_pct}</span>
+        </span>
+        <span class="badge bg-success bg-opacity-25 text-success-emphasis">
+          <i class="bi bi-arrow-up"></i> ${t('card.tpBadge')}: +%<span id="tp-${ticker}">${s.take_profit_pct}</span>
+        </span>
+        <span class="badge bg-info bg-opacity-25 text-info-emphasis ms-auto">
+          $<span id="maxinv-${ticker}">${s.max_investment}</span>
+        </span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function updateCard(ticker, s) {
+  const price = s.current_price, ref = s.reference_price;
+  const drop = s.drop_from_ref_pct, pos = s.position;
+
+  const priceEl = document.getElementById(`price-${ticker}`);
+  const chgEl   = document.getElementById(`chg-${ticker}`);
+  const refEl   = document.getElementById(`ref-${ticker}`);
+  const dropBar = document.getElementById(`dropBar-${ticker}`);
+  const sigEl   = document.getElementById(`sig-${ticker}`);
+  const t212El  = document.getElementById(`t212t-${ticker}`);
+  const posEl   = document.getElementById(`posSection-${ticker}`);
+  const dropLbl = document.getElementById(`dropLbl-${ticker}`);
+
+  if (priceEl && price != null) priceEl.textContent = `$${price.toFixed(4)}`;
+  if (refEl && ref != null) refEl.textContent = `$${ref.toFixed(4)}`;
+  if (t212El) t212El.textContent = s.t212_ticker;
+  if (dropLbl) dropLbl.textContent = t('card.dropLabel');
+
+  if (drop != null && dropBar) {
+    const fillPct = Math.min(Math.max(drop / 20 * 100, 0), 100);
+    dropBar.style.width = fillPct + '%';
+    if (drop >= s.buy_drop_pct) {
+      dropBar.className = 'pct-bar-fill bg-warning';
+      if (chgEl) { chgEl.textContent = `▼ ${drop.toFixed(2)}%`; chgEl.className = 'price-change text-warning'; }
+    } else if (drop > 0) {
+      dropBar.className = 'pct-bar-fill bg-danger';
+      if (chgEl) { chgEl.textContent = `▼ ${drop.toFixed(2)}%`; chgEl.className = 'price-change text-danger'; }
+    } else {
+      if (chgEl) { chgEl.textContent = `▲ ${Math.abs(drop).toFixed(2)}%`; chgEl.className = 'price-change text-success'; }
+    }
+  }
+
+  setIf(`bd-${ticker}`, s.buy_drop_pct);
+  setIf(`sl-${ticker}`, s.stop_loss_pct);
+  setIf(`tp-${ticker}`, s.take_profit_pct);
+  setIf(`maxinv-${ticker}`, s.max_investment);
+
+  const marker = document.getElementById(`dropMarker-${ticker}`);
+  if (marker) marker.style.left = pct2left(s.buy_drop_pct) + '%';
+
+  // Badge labels (dil değişince güncellenir)
+  const bdEl = document.getElementById(`bd-${ticker}`);
+  if (bdEl && bdEl.parentElement) {
+    bdEl.parentElement.innerHTML = `<i class="bi bi-arrow-down"></i> ${t('card.buyBadge')}: -%<span id="bd-${ticker}">${s.buy_drop_pct}</span>`;
+  }
+
+  if (pos && posEl) {
+    sigEl.textContent = t('card.position');
+    sigEl.className = 'badge bg-success badge-signal';
+    const gainColor = pos.gain_pct >= 0 ? 'text-success' : 'text-danger';
+    const gainIcon  = pos.gain_pct >= 0 ? '▲' : '▼';
+    const pnlColor  = (pos.unrealized_pnl || 0) >= 0 ? 'text-success' : 'text-danger';
+    const range  = pos.stop_loss_pct + pos.take_profit_pct;
+    const fromSL = pos.stop_loss_pct + (pos.gain_pct || 0);
+    const barPct = Math.min(Math.max(fromSL / range * 100, 0), 100);
+    posEl.innerHTML = `
+    <div class="pos-card p-2 mb-2">
+      <div class="d-flex justify-content-between mb-1">
+        <span class="section-label">${t('card.openPos')}</span>
+        <span class="${gainColor} fw-semibold">${gainIcon} ${Math.abs(pos.gain_pct || 0).toFixed(2)}%</span>
+      </div>
+      <div class="d-flex justify-content-between mb-2" style="font-size:0.8rem">
+        <span>${t('card.entry')} <b>$${pos.buy_price.toFixed(4)}</b> × ${pos.quantity}</span>
+        <span class="${pnlColor} fw-bold">${(pos.unrealized_pnl || 0) >= 0 ? '+' : ''}$${(pos.unrealized_pnl || 0).toFixed(2)}</span>
+      </div>
+      <div class="d-flex justify-content-between" style="font-size:0.7rem;color:#6e7681;margin-bottom:2px">
+        <span>${t('card.slBadge')} $${pos.stop_loss_price.toFixed(3)}</span>
+        <span>${t('card.tpBadge')} $${pos.take_profit_price.toFixed(3)}</span>
+      </div>
+      <div class="pct-bar-wrap mb-2">
+        <div class="pct-bar-fill" style="width:${barPct}%;background:linear-gradient(90deg,#f85149,#3fb950)"></div>
+        <div class="pct-marker" style="left:${barPct.toFixed(1)}%;background:#58a6ff"></div>
+      </div>
+      <button class="btn btn-sm btn-danger w-100" onclick="manualSell('${ticker}')">
+        <i class="bi bi-cash-coin me-1"></i>${t('card.manualSell')}
+      </button>
+    </div>`;
+  } else if (posEl) {
+    const isWaiting = (s.drop_from_ref_pct || 0) >= s.buy_drop_pct;
+    sigEl.textContent = isWaiting ? t('card.signal') : t('card.monitoring');
+    sigEl.className   = isWaiting ? 'badge bg-warning text-dark badge-signal' : 'badge bg-secondary badge-signal';
+    posEl.innerHTML   = `<div class="no-pos-card p-2 mb-2 text-secondary text-center" style="font-size:0.78rem">
+      ${t('card.noPos')}${s.buy_drop_pct}</div>`;
+  }
+
+  if (!s.enabled && sigEl) { sigEl.textContent = t('card.passive'); sigEl.className = 'badge bg-dark badge-signal'; }
+}
+
+function pct2left(pct, max = 20) { return Math.min(pct / max * 100, 100); }
+function setIf(id, val) { const el = document.getElementById(id); if (el && val != null) el.textContent = val; }
+
+// ─── Log ──────────────────────────────────────────────────────────────────
+function renderLogs(logs) {
+  if (!logs || logs.length === displayedLogCount) return;
+  const box = document.getElementById('logBox');
+  logs.slice(displayedLogCount).forEach(entry => {
+    const line = document.createElement('div');
+    line.className = `log-${entry.level}`;
+    line.dataset.tr = entry.tr || entry.message || '';
+    line.dataset.en = entry.en || entry.tr || entry.message || '';
+    const time = entry.timestamp.split('T')[1]?.substring(0, 8) || '';
+    const msg  = currentLang === 'en' ? line.dataset.en : line.dataset.tr;
+    line.innerHTML = `<span class="log-time">${time}</span>${escHtml(msg)}`;
+    box.appendChild(line);
+  });
+  displayedLogCount = logs.length;
+  box.scrollTop = box.scrollHeight;
+}
+
+function refreshLogLanguage() {
+  document.querySelectorAll('#logBox [data-tr]').forEach(line => {
+    const msg = currentLang === 'en' ? line.dataset.en : line.dataset.tr;
+    const time = line.querySelector('.log-time')?.outerHTML || '';
+    line.innerHTML = time + escHtml(msg);
+  });
+}
+
+function clearLogs() { document.getElementById('logBox').innerHTML = ''; displayedLogCount = 0; }
+
+// ─── Trades ───────────────────────────────────────────────────────────────
+function renderTrades(trades) {
+  const tbody = document.getElementById('tradesBody');
+  if (!trades || trades.length === 0) return;
+  const reasonMap = {
+    signal: t('trades.signal'), stop_loss: t('trades.stopLoss'),
+    take_profit: t('trades.takeProfit'), manual: t('trades.manual'),
+  };
+  tbody.innerHTML = [...trades].reverse().map(tr => {
+    const cls  = tr.side === 'BUY' ? 'trade-row-buy' : 'trade-row-sell';
+    const side = tr.side === 'BUY'
+      ? `<span class="text-success">${t('trades.buy')}</span>`
+      : `<span class="text-danger">${t('trades.sell')}</span>`;
+    const pnl  = tr.pnl != null
+      ? `<span class="${tr.pnl >= 0 ? 'text-success' : 'text-danger'}">${tr.pnl >= 0 ? '+' : ''}$${tr.pnl.toFixed(2)}</span>`
+      : '—';
+    const [datePart, timePart] = tr.timestamp.split('T');
+    const time = `${datePart} ${timePart?.substring(0, 8) || ''}`;
+    return `<tr class="${cls}">
+      <td class="text-secondary">${time}</td>
+      <td><b>${tr.ticker}</b></td>
+      <td>${side} <small class="text-secondary">(${reasonMap[tr.reason] || tr.reason})</small></td>
+      <td>${tr.quantity}</td><td>$${tr.price.toFixed(4)}</td><td>${pnl}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="6" class="text-center text-secondary py-3">${t('trades.empty')}</td></tr>`;
+}
+
+// ─── Bot control ──────────────────────────────────────────────────────────
+async function startBot() { await fetch('/api/bot/start', { method: 'POST' }); }
+async function stopBot()  { await fetch('/api/bot/stop',  { method: 'POST' }); }
+async function manualTick() {
+  const btn = event.currentTarget;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  await fetch('/api/bot/tick', { method: 'POST' });
+  setTimeout(() => { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>'; }, 2000);
+}
+
+// ─── Manual sell ──────────────────────────────────────────────────────────
+async function manualSell(ticker) {
+  if (!confirm(`${ticker} ${t('confirm.sell')}`)) return;
+  const r = await fetch(`/api/stocks/${ticker}/sell`, { method: 'POST' });
+  const data = await r.json();
+  if (data.error) alert(data.error);
+}
+
+// ─── Add stock ────────────────────────────────────────────────────────────
+async function addStock() {
+  const ticker = document.getElementById('newTicker').value.trim().toUpperCase();
+  if (!ticker) return alert(t('err.addTicker'));
+  const payload = {
+    ticker,
+    t212_ticker:     document.getElementById('newT212Ticker').value.trim() || `${ticker}_US_EQ`,
+    buy_drop_pct:    parseFloat(document.getElementById('newBuyDrop').value),
+    stop_loss_pct:   parseFloat(document.getElementById('newStopLoss').value),
+    take_profit_pct: parseFloat(document.getElementById('newTakeProfit').value),
+    max_investment:  parseFloat(document.getElementById('newMaxInv').value),
+    enabled: true,
+  };
+  const r = await fetch('/api/stocks', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (r.ok) {
+    bootstrap.Modal.getInstance(document.getElementById('addStockModal')).hide();
+    document.getElementById('newTicker').value = '';
+  } else alert(await r.text());
+}
+
+// ─── Edit / Save / Remove ─────────────────────────────────────────────────
+function openEdit(ticker) {
+  if (!lastState) return;
+  const s = lastState.stocks[ticker];
+  if (!s) return;
+  document.getElementById('editTicker').value    = ticker;
+  document.getElementById('editModalTitle').textContent = `${ticker} ${t('modal.editTitle')}`;
+  document.getElementById('editT212Ticker').value  = s.t212_ticker;
+  document.getElementById('editBuyDrop').value    = s.buy_drop_pct;
+  document.getElementById('editStopLoss').value   = s.stop_loss_pct;
+  document.getElementById('editTakeProfit').value = s.take_profit_pct;
+  document.getElementById('editMaxInv').value     = s.max_investment;
+  document.getElementById('editEnabled').checked  = s.enabled;
+  new bootstrap.Modal(document.getElementById('editStockModal')).show();
+}
+
+async function saveStock() {
+  const ticker = document.getElementById('editTicker').value;
+  const payload = {
+    ticker,
+    t212_ticker:     document.getElementById('editT212Ticker').value.trim(),
+    buy_drop_pct:    parseFloat(document.getElementById('editBuyDrop').value),
+    stop_loss_pct:   parseFloat(document.getElementById('editStopLoss').value),
+    take_profit_pct: parseFloat(document.getElementById('editTakeProfit').value),
+    max_investment:  parseFloat(document.getElementById('editMaxInv').value),
+    enabled:         document.getElementById('editEnabled').checked,
+  };
+  const r = await fetch(`/api/stocks/${ticker}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  if (r.ok) bootstrap.Modal.getInstance(document.getElementById('editStockModal')).hide();
+  else alert(t('err.save') + await r.text());
+}
+
+async function removeStock() {
+  const ticker = document.getElementById('editTicker').value;
+  if (!confirm(`${ticker} ${t('confirm.remove')}`)) return;
+  const r = await fetch(`/api/stocks/${ticker}`, { method: 'DELETE' });
+  if (r.ok) {
+    document.getElementById(`col-${ticker}`)?.remove();
+    bootstrap.Modal.getInstance(document.getElementById('editStockModal')).hide();
+  }
+}
+
+// ─── Account balance ──────────────────────────────────────────────────────
+async function loadAccount() {
+  try {
+    const data = await (await fetch('/api/account')).json();
+    if (data.cash) document.getElementById('accountBalance').textContent = `$${(data.cash.availableToTrade ?? 0).toFixed(2)}`;
+    if (data.error) document.getElementById('accountBalance').textContent = '—';
+  } catch(_) {}
+}
+
+// ─── Utility ──────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────
+setLang(currentLang);   // dil butonlarını ve data-i18n'leri ayarla
+connectWS();
+loadAccount();
+setInterval(loadAccount, 30000);
+</script>
+</body>
+</html>
