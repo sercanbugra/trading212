@@ -1,4 +1,4 @@
-app = "trading212-bot"
+app = "trading212"
 primary_region = "ams"
 
 [build]
