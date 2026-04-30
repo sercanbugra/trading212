@@ -26,6 +26,15 @@ class StockConfig:
     take_profit_pct: float = 10.0
     max_investment: float = 1000.0
     enabled: bool = True
+    # X-day trigger
+    xday_period: int = 0
+    xday_buy_drop: float = 0.0
+    xday_sell_rise: float = 0.0
+    # Sentiment (VADER) trigger  — 0 = disabled
+    sentiment_sell_below: float = 0.0   # sell when score <= this (negative, e.g. -50)
+    sentiment_buy_above: float = 0.0    # buy when score >= this (positive, e.g. 50)
+    # Specific price trigger — 0 = disabled; disables buy_drop_pct when set
+    target_price: float = 0.0
 
     def __post_init__(self):
         if not self.t212_ticker:
@@ -71,8 +80,10 @@ class LogEntry:
 
 
 # Satış sebeplerinin çevirileri
-_REASON_TR = {"signal": "Sinyal", "stop_loss": "Zarar Kes", "take_profit": "Kâr Al", "manual": "Manuel"}
-_REASON_EN = {"signal": "Signal", "stop_loss": "Stop Loss",  "take_profit": "Take Profit", "manual": "Manual"}
+_REASON_TR = {"signal": "Sinyal", "stop_loss": "Zarar Kes", "take_profit": "Kâr Al", "manual": "Manuel",
+              "xday_rise": "X-Gün Yükseliş", "sentiment": "Haber Skoru"}
+_REASON_EN = {"signal": "Signal", "stop_loss": "Stop Loss", "take_profit": "Take Profit", "manual": "Manual",
+              "xday_rise": "X-Day Rise", "sentiment": "News Score"}
 
 
 class Bot:
@@ -86,6 +97,8 @@ class Bot:
         self.current_prices: Dict[str, Optional[float]] = {}
         self.trades: List[Trade] = []
         self.logs: List[LogEntry] = []
+        self.sentiment_scores: Dict[str, Optional[float]] = {}
+        self.xday_changes: Dict[str, Optional[float]] = {}
         self.running = False
         self._task: Optional[asyncio.Task] = None
 
@@ -170,10 +183,7 @@ class Bot:
     async def _process_stock(self, ticker: str, config: StockConfig):
         quote = await self.feed.get_quote(ticker)
         if quote is None:
-            self._log(
-                f"{ticker}: fiyat alınamadı", level="warning",
-                en=f"{ticker}: price unavailable",
-            )
+            self._log(f"{ticker}: fiyat alınamadı", level="warning", en=f"{ticker}: price unavailable")
             return
         price = quote["price"]
         self.current_prices[ticker] = price
@@ -182,46 +192,91 @@ class Bot:
         if self.reference_dates.get(ticker) != today and quote.get("open"):
             self.reference_prices[ticker] = quote["open"]
             self.reference_dates[ticker] = today
-            self._log(
-                f"{ticker}: gün açılışı = ${quote['open']:.4f}",
-                en=f"{ticker}: day open = ${quote['open']:.4f}",
-            )
+            self._log(f"{ticker}: gün açılışı = ${quote['open']:.4f}", en=f"{ticker}: day open = ${quote['open']:.4f}")
         elif self.reference_dates.get(ticker) != today:
             await self._refresh_reference(ticker)
 
+        # X-day change signal
+        xday_change: Optional[float] = None
+        if config.xday_period > 0 and (config.xday_buy_drop > 0 or config.xday_sell_rise > 0):
+            xday_change = await self.feed.get_day_change(ticker, config.xday_period)
+            if xday_change is not None:
+                self.xday_changes[ticker] = round(xday_change, 2)
+
+        # Sentiment signal
+        sentiment: Optional[float] = None
+        if config.sentiment_sell_below < 0 or config.sentiment_buy_above > 0:
+            sentiment = await self.feed.get_sentiment(ticker)
+            if sentiment is not None:
+                self.sentiment_scores[ticker] = round(sentiment, 1)
+
+        if ticker in self.positions:
+            await self._check_exit(ticker, config, price, xday_change, sentiment)
+            return
+
         ref = self.reference_prices.get(ticker)
         if ref is None:
-            self._log(
-                f"{ticker}: referans fiyat yok, bekleniyor", level="warning",
-                en=f"{ticker}: reference price unavailable, waiting",
-            )
+            self._log(f"{ticker}: referans fiyat yok, bekleniyor", level="warning",
+                      en=f"{ticker}: reference price unavailable, waiting")
             return
 
         drop_from_ref = (ref - price) / ref * 100
+        self._log(
+            f"{ticker} | fiyat: ${price:.4f} | referans: ${ref:.4f} | düşüş: {drop_from_ref:.2f}%",
+            en=f"{ticker} | price: ${price:.4f} | ref: ${ref:.4f} | drop: {drop_from_ref:.2f}%",
+        )
 
-        if ticker in self.positions:
-            await self._check_exit(ticker, config, price)
-        else:
-            self._log(
-                f"{ticker} | fiyat: ${price:.4f} | referans: ${ref:.4f} | düşüş: {drop_from_ref:.2f}%",
-                en=f"{ticker} | price: ${price:.4f} | ref: ${ref:.4f} | drop: {drop_from_ref:.2f}%",
-            )
-            if drop_from_ref >= config.buy_drop_pct:
+        # Entry: hedef fiyat modu (diğer alım koşullarını devre dışı bırakır)
+        if config.target_price > 0:
+            if price <= config.target_price:
                 qty = int(config.max_investment / price)
                 if qty > 0:
                     self._log(
-                        f"{ticker}: %{drop_from_ref:.1f} düştü → alım sinyali ({qty} adet @ ${price:.4f})",
-                        en=f"{ticker}: dropped {drop_from_ref:.1f}% → buy signal ({qty} shares @ ${price:.4f})",
+                        f"{ticker}: hedef fiyat ${config.target_price:.4f} → alım ({qty} adet @ ${price:.4f})",
+                        en=f"{ticker}: target price ${config.target_price:.4f} → buy ({qty} shares @ ${price:.4f})",
                     )
                     await self._buy(ticker, config, qty, price)
-                else:
-                    self._log(
-                        f"{ticker}: fiyat ${price:.4f} çok yüksek, ${config.max_investment} ile 1 adet bile alınamıyor",
-                        level="warning",
-                        en=f"{ticker}: price ${price:.4f} too high, cannot buy even 1 share with ${config.max_investment}",
-                    )
+            return  # hedef fiyat modunda diğer koşullar çalışmaz
 
-    async def _check_exit(self, ticker: str, config: StockConfig, price: float):
+        # Entry: standart düşüş % tetikleyici
+        if drop_from_ref >= config.buy_drop_pct:
+            qty = int(config.max_investment / price)
+            if qty > 0:
+                self._log(
+                    f"{ticker}: %{drop_from_ref:.1f} düştü → alım sinyali ({qty} adet @ ${price:.4f})",
+                    en=f"{ticker}: dropped {drop_from_ref:.1f}% → buy signal ({qty} shares @ ${price:.4f})",
+                )
+                await self._buy(ticker, config, qty, price)
+                return
+            self._log(
+                f"{ticker}: fiyat ${price:.4f} çok yüksek, ${config.max_investment} ile 1 adet bile alınamıyor",
+                level="warning",
+                en=f"{ticker}: price ${price:.4f} too high, cannot buy even 1 share with ${config.max_investment}",
+            )
+
+        # Entry: X-günlük düşüş tetikleyici
+        if xday_change is not None and config.xday_buy_drop > 0 and xday_change <= -config.xday_buy_drop:
+            qty = int(config.max_investment / price)
+            if qty > 0:
+                self._log(
+                    f"{ticker}: {config.xday_period}G'de %{abs(xday_change):.1f} düşüş → alım ({qty} adet @ ${price:.4f})",
+                    en=f"{ticker}: {config.xday_period}d drop {abs(xday_change):.1f}% → buy ({qty} shares @ ${price:.4f})",
+                )
+                await self._buy(ticker, config, qty, price)
+                return
+
+        # Entry: pozitif haber skoru tetikleyici
+        if sentiment is not None and config.sentiment_buy_above > 0 and sentiment >= config.sentiment_buy_above:
+            qty = int(config.max_investment / price)
+            if qty > 0:
+                self._log(
+                    f"{ticker}: pozitif haber skoru {sentiment:.1f} ≥ {config.sentiment_buy_above:.0f} → alım",
+                    en=f"{ticker}: positive news score {sentiment:.1f} ≥ {config.sentiment_buy_above:.0f} → buy",
+                )
+                await self._buy(ticker, config, qty, price)
+
+    async def _check_exit(self, ticker: str, config: StockConfig, price: float,
+                          xday_change: Optional[float] = None, sentiment: Optional[float] = None):
         pos = self.positions[ticker]
         gain_pct = (price - pos.buy_price) / pos.buy_price * 100
 
@@ -231,17 +286,25 @@ class Bot:
         )
 
         if gain_pct <= -pos.stop_loss_pct:
-            self._log(
-                f"{ticker}: ZARAR KES tetiklendi ({gain_pct:.2f}%)", level="warning",
-                en=f"{ticker}: STOP LOSS triggered ({gain_pct:.2f}%)",
-            )
+            self._log(f"{ticker}: ZARAR KES tetiklendi ({gain_pct:.2f}%)", level="warning",
+                      en=f"{ticker}: STOP LOSS triggered ({gain_pct:.2f}%)")
             await self._sell(ticker, pos, "stop_loss", price)
         elif gain_pct >= pos.take_profit_pct:
-            self._log(
-                f"{ticker}: KÂR AL tetiklendi (+{gain_pct:.2f}%)",
-                en=f"{ticker}: TAKE PROFIT triggered (+{gain_pct:.2f}%)",
-            )
+            self._log(f"{ticker}: KÂR AL tetiklendi (+{gain_pct:.2f}%)",
+                      en=f"{ticker}: TAKE PROFIT triggered (+{gain_pct:.2f}%)")
             await self._sell(ticker, pos, "take_profit", price)
+        elif xday_change is not None and config.xday_sell_rise > 0 and xday_change >= config.xday_sell_rise:
+            self._log(
+                f"{ticker}: {config.xday_period}G'de %{xday_change:.1f} yükseliş → satış",
+                en=f"{ticker}: {config.xday_period}d rise {xday_change:.1f}% → sell",
+            )
+            await self._sell(ticker, pos, "xday_rise", price)
+        elif sentiment is not None and config.sentiment_sell_below < 0 and sentiment <= config.sentiment_sell_below:
+            self._log(
+                f"{ticker}: negatif haber skoru {sentiment:.1f} ≤ {config.sentiment_sell_below:.0f} → satış",
+                en=f"{ticker}: negative news score {sentiment:.1f} ≤ {config.sentiment_sell_below:.0f} → sell",
+            )
+            await self._sell(ticker, pos, "sentiment", price)
 
     async def _refresh_reference(self, ticker: str):
         today = date.today()
@@ -342,9 +405,11 @@ class Bot:
 
             stocks_out[ticker] = {
                 **asdict(cfg),
-                "current_price":    price,
-                "reference_price":  ref,
+                "current_price":     price,
+                "reference_price":   ref,
                 "drop_from_ref_pct": drop_from_ref,
+                "sentiment_score":   self.sentiment_scores.get(ticker),
+                "xday_change":       self.xday_changes.get(ticker),
                 "position": (
                     {
                         **asdict(pos),

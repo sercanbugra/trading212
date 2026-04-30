@@ -47,6 +47,8 @@ _t212_demo: bool = True
 _t212_connected: bool = False
 _ui_pw_hash: str = ""
 _ui_pw_enabled: bool = False
+_instruments_cache: list = []
+_instruments_ts: float = 0.0
 
 
 def _hash_pw(password: str) -> str:
@@ -136,6 +138,12 @@ class StockRequest(BaseModel):
     take_profit_pct: float = 10.0
     max_investment: float = 1000.0
     enabled: bool = True
+    xday_period: int = 0
+    xday_buy_drop: float = 0.0
+    xday_sell_rise: float = 0.0
+    sentiment_sell_below: float = 0.0
+    sentiment_buy_above: float = 0.0
+    target_price: float = 0.0
 
 
 class AuthConnectRequest(BaseModel):
@@ -306,6 +314,31 @@ async def remove_stock(ticker: str):
     return {"ok": True}
 
 
+# ─── T212 enstrüman arama ────────────────────────────────────────────────────
+
+@app.get("/api/t212/search")
+async def search_t212_instruments(q: str = ""):
+    import time
+    global _instruments_cache, _instruments_ts
+    if not _t212_connected or bot.t212 is None:
+        return {"error": "T212 bağlı değil"}
+    if not _instruments_cache or (time.time() - _instruments_ts) > 21600:
+        try:
+            _instruments_cache = await bot.t212.get_instruments()
+            _instruments_ts = time.time()
+        except Exception as e:
+            return {"error": str(e)}
+    if not q:
+        return []
+    q_lower = q.lower()
+    results = [
+        {"ticker": inst["ticker"], "name": inst.get("shortName") or inst.get("name", "")}
+        for inst in _instruments_cache
+        if q_lower in inst["ticker"].lower() or q_lower in (inst.get("shortName") or "").lower()
+    ][:15]
+    return results
+
+
 # ─── Fiyat verisi ─────────────────────────────────────────────────────────────
 
 @app.get("/api/candles/{ticker}")
@@ -361,6 +394,7 @@ async def _broadcast_loop():
             state = bot.get_state()
             state["t212_connected"] = _t212_connected
             state["demo"] = _t212_demo
+            state["api_stats"] = _pf.get_stats()
             msg = json.dumps(state)
             dead: Set[WebSocket] = set()
             for ws in list(_ws_clients):

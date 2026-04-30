@@ -123,8 +123,8 @@
       <span class="status-dot dot-stopped"></span><span data-i18n="nav.stopped">Durduruldu</span>
     </span>
     <span id="envBadge" class="badge bg-warning text-dark">DEMO</span>
-    <span id="apiStats" class="text-secondary" style="font-size:0.75rem" title="">
-      <i class="bi bi-graph-up me-1"></i><span id="apiTotal">0</span> <span data-i18n="nav.calls">çağrı</span>
+    <span id="apiStats" class="text-secondary" style="font-size:0.75rem;cursor:help" title="">
+      <i class="bi bi-cloud me-1"></i>TD:<span id="apiRemaining" class="mx-1">—</span>
     </span>
     <span id="accountBalance" class="text-secondary">— $</span>
     <button id="btnStart" class="btn btn-sm btn-success" onclick="startBot()">
@@ -138,6 +138,9 @@
     </button>
     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addStockModal">
       <i class="bi bi-plus-lg"></i> <span data-i18n="nav.addStock">Hisse Ekle</span>
+    </button>
+    <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#formulaModal" title="Toplu Formül">
+      <i class="bi bi-calculator"></i>
     </button>
     <!-- Ayarlar -->
     <button class="btn btn-sm btn-outline-secondary" onclick="showReconnectOverlay()" title="T212 Ayarları">
@@ -223,7 +226,14 @@
         </div>
         <div class="mb-3">
           <label class="form-label" data-i18n="modal.t212ticker">Trading212 Sembolü</label>
-          <input type="text" id="newT212Ticker" class="form-control" />
+          <div class="input-group">
+            <input type="text" id="newT212Ticker" class="form-control font-monospace" autocomplete="off" />
+            <button class="btn btn-outline-secondary" type="button"
+                    onclick="searchT212Ticker('newT212Ticker','newTicker','newT212Results')" title="T212'de ara">
+              <i class="bi bi-search"></i>
+            </button>
+          </div>
+          <div id="newT212Results" class="list-group mt-1" style="display:none;max-height:180px;overflow-y:auto;font-size:0.82rem;position:relative;z-index:10"></div>
           <div class="form-text" data-i18n="modal.t212hint">Boş bırakılırsa otomatik SEMBOL_US_EQ olur</div>
         </div>
         <div class="row g-2 mb-3">
@@ -243,6 +253,51 @@
         <div class="mb-3">
           <label class="form-label" data-i18n="modal.maxInv">Maks Yatırım ($)</label>
           <input type="number" id="newMaxInv" class="form-control" value="1000" min="1" />
+        </div>
+        <hr class="border-secondary my-2">
+        <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#addAdvanced">
+          <span class="section-label" data-i18n="modal.advanced">GELİŞMİŞ KOŞULLAR</span>
+          <i class="bi bi-chevron-down" style="font-size:0.72rem;color:#6e7681"></i>
+        </div>
+        <div class="collapse" id="addAdvanced">
+          <div class="mb-2">
+            <div class="section-label mb-1" data-i18n="modal.xday">X-GÜN KOŞULU</div>
+            <div class="row g-2">
+              <div class="col-4">
+                <label class="form-label" data-i18n="modal.xdayDays">Gün</label>
+                <input type="number" id="newXdayPeriod" class="form-control form-control-sm" value="0" min="0" step="1" />
+              </div>
+              <div class="col-4">
+                <label class="form-label" data-i18n="modal.xdayBuy">Alım Düşüş%</label>
+                <input type="number" id="newXdayBuyDrop" class="form-control form-control-sm" value="0" min="0" step="0.1" />
+              </div>
+              <div class="col-4">
+                <label class="form-label" data-i18n="modal.xdaySell">Satış Yükseliş%</label>
+                <input type="number" id="newXdaySellRise" class="form-control form-control-sm" value="0" min="0" step="0.1" />
+              </div>
+            </div>
+          </div>
+          <div class="mb-2">
+            <div class="section-label mb-1" data-i18n="modal.sentiment">HABER SKORU (VADER)</div>
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label" data-i18n="modal.sentSell">Satış skoru ≤ (Y)</label>
+                <input type="number" id="newSentimentSell" class="form-control form-control-sm" value="0" min="-100" max="0" step="1" />
+                <div class="form-text">0 = kapalı, örn: -50</div>
+              </div>
+              <div class="col-6">
+                <label class="form-label" data-i18n="modal.sentBuy">Alış skoru ≥ (Z)</label>
+                <input type="number" id="newSentimentBuy" class="form-control form-control-sm" value="0" min="0" max="100" step="1" />
+                <div class="form-text">0 = kapalı, örn: 50</div>
+              </div>
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label" data-i18n="modal.targetPrice">Hedef Fiyat ($)</label>
+            <input type="number" id="newTargetPrice" class="form-control form-control-sm" value="0" min="0" step="0.0001"
+                   oninput="toggleTargetPriceMode('new')" />
+            <div class="form-text" data-i18n="modal.targetHint">Fiyat bu değere düşünce alım — girilirse Alım Düşüşü% devre dışı kalır</div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -265,7 +320,14 @@
         <input type="hidden" id="editTicker" />
         <div class="mb-3">
           <label class="form-label" data-i18n="modal.t212ticker">Trading212 Sembolü</label>
-          <input type="text" id="editT212Ticker" class="form-control" />
+          <div class="input-group">
+            <input type="text" id="editT212Ticker" class="form-control font-monospace" autocomplete="off" />
+            <button class="btn btn-outline-secondary" type="button"
+                    onclick="searchT212Ticker('editT212Ticker','editTicker','editT212Results')" title="T212'de ara">
+              <i class="bi bi-search"></i>
+            </button>
+          </div>
+          <div id="editT212Results" class="list-group mt-1" style="display:none;max-height:180px;overflow-y:auto;font-size:0.82rem;position:relative;z-index:10"></div>
         </div>
         <div class="row g-2 mb-3">
           <div class="col-4">
@@ -285,15 +347,137 @@
           <label class="form-label" data-i18n="modal.maxInv">Maks Yatırım ($)</label>
           <input type="number" id="editMaxInv" class="form-control" min="1" />
         </div>
-        <div class="form-check">
+        <div class="form-check mb-2">
           <input class="form-check-input" type="checkbox" id="editEnabled" />
           <label class="form-check-label" for="editEnabled" data-i18n="modal.active">Aktif</label>
+        </div>
+        <hr class="border-secondary my-2">
+        <div class="d-flex align-items-center gap-2 mb-2" style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#editAdvanced">
+          <span class="section-label" data-i18n="modal.advanced">GELİŞMİŞ KOŞULLAR</span>
+          <i class="bi bi-chevron-down" style="font-size:0.72rem;color:#6e7681"></i>
+        </div>
+        <div class="collapse" id="editAdvanced">
+          <div class="mb-2">
+            <div class="section-label mb-1" data-i18n="modal.xday">X-GÜN KOŞULU</div>
+            <div class="row g-2">
+              <div class="col-4">
+                <label class="form-label" data-i18n="modal.xdayDays">Gün</label>
+                <input type="number" id="editXdayPeriod" class="form-control form-control-sm" value="0" min="0" step="1" />
+              </div>
+              <div class="col-4">
+                <label class="form-label" data-i18n="modal.xdayBuy">Alım Düşüş%</label>
+                <input type="number" id="editXdayBuyDrop" class="form-control form-control-sm" value="0" min="0" step="0.1" />
+              </div>
+              <div class="col-4">
+                <label class="form-label" data-i18n="modal.xdaySell">Satış Yükseliş%</label>
+                <input type="number" id="editXdaySellRise" class="form-control form-control-sm" value="0" min="0" step="0.1" />
+              </div>
+            </div>
+          </div>
+          <div class="mb-2">
+            <div class="section-label mb-1" data-i18n="modal.sentiment">HABER SKORU (VADER)</div>
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label" data-i18n="modal.sentSell">Satış skoru ≤ (Y)</label>
+                <input type="number" id="editSentimentSell" class="form-control form-control-sm" value="0" min="-100" max="0" step="1" />
+                <div class="form-text">0 = kapalı, örn: -50</div>
+              </div>
+              <div class="col-6">
+                <label class="form-label" data-i18n="modal.sentBuy">Alış skoru ≥ (Z)</label>
+                <input type="number" id="editSentimentBuy" class="form-control form-control-sm" value="0" min="0" max="100" step="1" />
+                <div class="form-text">0 = kapalı, örn: 50</div>
+              </div>
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label" data-i18n="modal.targetPrice">Hedef Fiyat ($)</label>
+            <input type="number" id="editTargetPrice" class="form-control form-control-sm" value="0" min="0" step="0.0001"
+                   oninput="toggleTargetPriceMode('edit')" />
+            <div class="form-text" data-i18n="modal.targetHint">Fiyat bu değere düşünce alım — girilirse Alım Düşüşü% devre dışı kalır</div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-danger me-auto" onclick="removeStock()" data-i18n="modal.remove">Kaldır</button>
         <button class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="modal.cancel">İptal</button>
         <button class="btn btn-primary" onclick="saveStock()" data-i18n="modal.save">Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── FORMULA MODAL ──────────────────────────────────────────────── -->
+<div class="modal fade" id="formulaModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" data-i18n="formula.title">Toplu Formül Uygula</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold" data-i18n="formula.stocks">Hisseler</label>
+          <div class="d-flex flex-wrap gap-2 mt-1" id="formulaStockList"></div>
+        </div>
+        <div class="alert alert-secondary py-2 mb-3" style="font-size:0.79rem">
+          <i class="bi bi-info-circle me-1"></i>
+          <span id="formulaVarsHint"></span>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-sm-6">
+            <label class="form-label" data-i18n="formula.buyDrop">Alım Düşüşü % formülü</label>
+            <input type="text" id="fBuyDrop" class="form-control form-control-sm font-monospace" placeholder="e.g. price < 1 ? 15 : 10" oninput="livePreview()" />
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" data-i18n="formula.stopLoss">Zarar Kes % formülü</label>
+            <input type="text" id="fStopLoss" class="form-control form-control-sm font-monospace" placeholder="e.g. 8" oninput="livePreview()" />
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" data-i18n="formula.takeProfit">Kâr Al % formülü</label>
+            <input type="text" id="fTakeProfit" class="form-control form-control-sm font-monospace" placeholder="e.g. drop * 2" oninput="livePreview()" />
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" data-i18n="formula.maxInv">Maks Yatırım ($) formülü</label>
+            <input type="text" id="fMaxInv" class="form-control form-control-sm font-monospace" placeholder="e.g. 1000 / price" oninput="livePreview()" />
+          </div>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary mb-2" type="button"
+                data-bs-toggle="collapse" data-bs-target="#formulaAdvanced">
+          <i class="bi bi-sliders me-1"></i><span data-i18n="formula.advanced">Gelişmiş</span>
+        </button>
+        <div class="collapse" id="formulaAdvanced">
+          <div class="row g-3 mb-3 pt-1">
+            <div class="col-sm-4">
+              <label class="form-label" data-i18n="formula.targetPrice">Hedef Fiyat ($) formülü</label>
+              <input type="text" id="fTargetPrice" class="form-control form-control-sm font-monospace" placeholder="e.g. ref * 0.85" oninput="livePreview()" />
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label" data-i18n="formula.xdayPeriod">X-Gün Periyodu</label>
+              <input type="text" id="fXdayPeriod" class="form-control form-control-sm font-monospace" placeholder="e.g. 7" oninput="livePreview()" />
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label" data-i18n="formula.xdayBuy">X-Gün Alım%</label>
+              <input type="text" id="fXdayBuyDrop" class="form-control form-control-sm font-monospace" placeholder="e.g. 20" oninput="livePreview()" />
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label" data-i18n="formula.xdaySell">X-Gün Satış%</label>
+              <input type="text" id="fXdaySellRise" class="form-control form-control-sm font-monospace" placeholder="e.g. 15" oninput="livePreview()" />
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label" data-i18n="formula.sentSell">Satış Haber Skoru</label>
+              <input type="text" id="fSentimentSell" class="form-control form-control-sm font-monospace" placeholder="e.g. -50" oninput="livePreview()" />
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label" data-i18n="formula.sentBuy">Alış Haber Skoru</label>
+              <input type="text" id="fSentimentBuy" class="form-control form-control-sm font-monospace" placeholder="e.g. 60" oninput="livePreview()" />
+            </div>
+          </div>
+        </div>
+        <div id="formulaPreview"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="modal.cancel">İptal</button>
+        <button class="btn btn-primary" onclick="applyFormulas()" data-i18n="formula.apply">Uygula</button>
       </div>
     </div>
   </div>
@@ -350,6 +534,32 @@ const LANG = {
     'auth.connectBtn': 'Bağlan',
     'auth.disconnected': 'T212 bağlantısı kesildi (sunucu yeniden başladı).',
     'auth.reconnectBtn': 'Yeniden Bağlan',
+    'formula.title': 'Toplu Formül Uygula',
+    'formula.stocks': 'Hisseler',
+    'formula.all': 'Tümü',
+    'formula.buyDrop': 'Alım Düşüşü % formülü',
+    'formula.stopLoss': 'Zarar Kes % formülü',
+    'formula.takeProfit': 'Kâr Al % formülü',
+    'formula.maxInv': 'Maks Yatırım ($) formülü',
+    'formula.apply': 'Uygula',
+    'formula.advanced': 'Gelişmiş',
+    'formula.targetPrice': 'Hedef Fiyat ($) formülü',
+    'formula.xdayPeriod': 'X-Gün Periyodu formülü',
+    'formula.xdayBuy': 'X-Gün Alım% formülü',
+    'formula.xdaySell': 'X-Gün Satış% formülü',
+    'formula.sentSell': 'Satış Haber Skoru formülü',
+    'formula.sentBuy': 'Alış Haber Skoru formülü',
+    'modal.advanced': 'GELİŞMİŞ KOŞULLAR',
+    'modal.xday': 'X-GÜN KOŞULU',
+    'modal.xdayDays': 'Gün',
+    'modal.xdayBuy': 'Alım Düşüş%',
+    'modal.xdaySell': 'Satış Yükseliş%',
+    'modal.sentiment': 'HABER SKORU (VADER)',
+    'modal.sentSell': 'Satış skoru ≤ (Y)',
+    'modal.sentBuy': 'Alış skoru ≥ (Z)',
+    'modal.targetPrice': 'Hedef Fiyat ($)',
+    'modal.targetHint': 'Fiyat bu değere düşünce alım — girilirse Alım Düşüşü% devre dışı kalır',
+    'card.sentLabel': 'HABER SKORU',
   },
   en: {
     'nav.running': 'Running', 'nav.stopped': 'Stopped',
@@ -398,6 +608,32 @@ const LANG = {
     'auth.connectBtn': 'Connect',
     'auth.disconnected': 'T212 connection lost (server restarted).',
     'auth.reconnectBtn': 'Reconnect',
+    'formula.title': 'Bulk Formula Apply',
+    'formula.stocks': 'Stocks',
+    'formula.all': 'All',
+    'formula.buyDrop': 'Buy Drop % formula',
+    'formula.stopLoss': 'Stop Loss % formula',
+    'formula.takeProfit': 'Take Profit % formula',
+    'formula.maxInv': 'Max Investment ($) formula',
+    'formula.apply': 'Apply',
+    'formula.advanced': 'Advanced',
+    'formula.targetPrice': 'Target Price ($) formula',
+    'formula.xdayPeriod': 'X-Day Period formula',
+    'formula.xdayBuy': 'X-Day Buy% formula',
+    'formula.xdaySell': 'X-Day Sell% formula',
+    'formula.sentSell': 'Sell News Score formula',
+    'formula.sentBuy': 'Buy News Score formula',
+    'modal.advanced': 'ADVANCED CONDITIONS',
+    'modal.xday': 'X-DAY CONDITION',
+    'modal.xdayDays': 'Days',
+    'modal.xdayBuy': 'Buy Drop%',
+    'modal.xdaySell': 'Sell Rise%',
+    'modal.sentiment': 'NEWS SCORE (VADER)',
+    'modal.sentSell': 'Sell score ≤ (Y)',
+    'modal.sentBuy': 'Buy score ≥ (Z)',
+    'modal.targetPrice': 'Target Price ($)',
+    'modal.targetHint': 'Buy when price drops to this level — disables Buy Drop% when set',
+    'card.sentLabel': 'NEWS SCORE',
   }
 };
 
@@ -647,8 +883,14 @@ function renderAll(state) {
 function renderNav(state) {
   if (state.api_stats) {
     const s = state.api_stats;
-    document.getElementById('apiTotal').textContent = s.total;
-    document.getElementById('apiStats').title = `TD:${s.twelvedata} FH:${s.finnhub} YF:${s.yfinance} Err:${s.errors}`;
+    const rem = s.twelvedata_remaining ?? Math.max(0, (s.twelvedata_limit || 800) - s.twelvedata);
+    const remEl = document.getElementById('apiRemaining');
+    if (remEl) {
+      remEl.textContent = rem;
+      remEl.className = rem < 100 ? 'mx-1 text-warning fw-bold' : 'mx-1';
+    }
+    document.getElementById('apiStats').title =
+      `Twelve Data: ${s.twelvedata}/${s.twelvedata_limit || 800} ${currentLang === 'tr' ? 'kullanıldı' : 'used'} — ${rem} ${currentLang === 'tr' ? 'kaldı' : 'remaining'}\nFinnhub: ${s.finnhub}\nyfinance: ${s.yfinance}\nHatalar/Errors: ${s.errors}`;
   }
   if (state.demo !== undefined) updateEnvBadge(state.demo);
 
@@ -703,9 +945,10 @@ function buildCardHTML(ticker, s) {
       </button>
     </div>
     <div class="card-body pb-2">
-      <div class="d-flex align-items-baseline gap-3 mb-2">
+      <div class="d-flex align-items-baseline gap-3 flex-wrap mb-2">
         <span class="price-big" id="price-${ticker}">—</span>
         <span class="price-change" id="chg-${ticker}"></span>
+        <span id="xday-${ticker}" style="display:none;font-size:0.75rem"></span>
       </div>
       <div class="d-flex justify-content-between text-secondary mb-3" style="font-size:0.78rem">
         <span>${t('card.dayOpen')}: <span id="ref-${ticker}" class="text-white">—</span></span>
@@ -717,6 +960,18 @@ function buildCardHTML(ticker, s) {
         <div class="pct-marker" id="dropMarker-${ticker}" style="left:${pct2left(s.buy_drop_pct)}%"></div>
       </div>
       <div id="posSection-${ticker}"></div>
+      <!-- Sentiment bar -->
+      <div id="sentSection-${ticker}" style="display:none" class="mb-2">
+        <div class="d-flex justify-content-between mb-1">
+          <span class="section-label" data-i18n="card.sentLabel">HABER SKORU</span>
+          <span id="sentScore-${ticker}" class="fw-semibold" style="font-size:0.75rem">—</span>
+        </div>
+        <div style="position:relative;height:6px;background:#21262d;border-radius:3px;overflow:visible">
+          <div id="sentBar-${ticker}" style="position:absolute;height:100%;border-radius:3px;transition:width .4s,left .4s"></div>
+          <div id="sentSellMk-${ticker}" class="pct-marker" style="background:#f85149;display:none"></div>
+          <div id="sentBuyMk-${ticker}" class="pct-marker" style="background:#3fb950;display:none"></div>
+        </div>
+      </div>
       <div class="d-flex gap-2 mt-2" style="font-size:0.75rem">
         <span class="badge bg-danger bg-opacity-25 text-danger-emphasis">
           <i class="bi bi-arrow-down"></i> ${t('card.buyBadge')}: -%<span id="bd-${ticker}">${s.buy_drop_pct}</span>
@@ -820,6 +1075,54 @@ function updateCard(ticker, s) {
   }
 
   if (!s.enabled && sigEl) { sigEl.textContent = t('card.passive'); sigEl.className = 'badge bg-dark badge-signal'; }
+
+  // X-day change badge
+  const xdayEl = document.getElementById(`xday-${ticker}`);
+  if (xdayEl) {
+    if (s.xday_period > 0 && s.xday_change != null) {
+      const arrow = s.xday_change >= 0 ? '▲' : '▼';
+      const cls   = s.xday_change >= 0 ? 'text-success' : 'text-danger';
+      xdayEl.style.display = '';
+      xdayEl.innerHTML = `<span class="${cls}">${arrow}${Math.abs(s.xday_change).toFixed(1)}% <span class="text-secondary">(${s.xday_period}G)</span></span>`;
+    } else {
+      xdayEl.style.display = 'none';
+    }
+  }
+
+  // Sentiment bar
+  const sentSection = document.getElementById(`sentSection-${ticker}`);
+  if (sentSection) {
+    const sentEnabled = s.sentiment_sell_below < 0 || s.sentiment_buy_above > 0;
+    sentSection.style.display = sentEnabled ? '' : 'none';
+    if (sentEnabled) {
+      const scoreEl  = document.getElementById(`sentScore-${ticker}`);
+      const barEl    = document.getElementById(`sentBar-${ticker}`);
+      const sellMkEl = document.getElementById(`sentSellMk-${ticker}`);
+      const buyMkEl  = document.getElementById(`sentBuyMk-${ticker}`);
+      if (s.sentiment_score != null) {
+        const sc = Math.max(-100, Math.min(100, s.sentiment_score));
+        if (scoreEl) {
+          scoreEl.textContent = s.sentiment_score.toFixed(1);
+          scoreEl.style.color = sc >= 0 ? '#3fb950' : '#f85149';
+        }
+        if (barEl) {
+          if (sc >= 0) {
+            barEl.style.left = '50%'; barEl.style.width = (sc / 2) + '%'; barEl.style.background = '#3fb950';
+          } else {
+            barEl.style.left = ((sc + 100) / 2) + '%'; barEl.style.width = (-sc / 2) + '%'; barEl.style.background = '#f85149';
+          }
+        }
+      }
+      if (sellMkEl) {
+        if (s.sentiment_sell_below < 0) { sellMkEl.style.display = ''; sellMkEl.style.left = ((s.sentiment_sell_below + 100) / 2) + '%'; }
+        else sellMkEl.style.display = 'none';
+      }
+      if (buyMkEl) {
+        if (s.sentiment_buy_above > 0) { buyMkEl.style.display = ''; buyMkEl.style.left = ((s.sentiment_buy_above + 100) / 2) + '%'; }
+        else buyMkEl.style.display = 'none';
+      }
+    }
+  }
 }
 
 function pct2left(pct, max = 20) { return Math.min(pct / max * 100, 100); }
@@ -905,12 +1208,18 @@ async function addStock() {
   if (!ticker) return alert(t('err.addTicker'));
   const payload = {
     ticker,
-    t212_ticker:     document.getElementById('newT212Ticker').value.trim() || `${ticker}_US_EQ`,
-    buy_drop_pct:    parseFloat(document.getElementById('newBuyDrop').value),
-    stop_loss_pct:   parseFloat(document.getElementById('newStopLoss').value),
-    take_profit_pct: parseFloat(document.getElementById('newTakeProfit').value),
-    max_investment:  parseFloat(document.getElementById('newMaxInv').value),
-    enabled: true,
+    t212_ticker:          document.getElementById('newT212Ticker').value.trim() || `${ticker}_US_EQ`,
+    buy_drop_pct:         parseFloat(document.getElementById('newBuyDrop').value),
+    stop_loss_pct:        parseFloat(document.getElementById('newStopLoss').value),
+    take_profit_pct:      parseFloat(document.getElementById('newTakeProfit').value),
+    max_investment:       parseFloat(document.getElementById('newMaxInv').value),
+    enabled:              true,
+    xday_period:          parseInt(document.getElementById('newXdayPeriod').value) || 0,
+    xday_buy_drop:        parseFloat(document.getElementById('newXdayBuyDrop').value) || 0,
+    xday_sell_rise:       parseFloat(document.getElementById('newXdaySellRise').value) || 0,
+    sentiment_sell_below: parseFloat(document.getElementById('newSentimentSell').value) || 0,
+    sentiment_buy_above:  parseFloat(document.getElementById('newSentimentBuy').value) || 0,
+    target_price:         parseFloat(document.getElementById('newTargetPrice').value) || 0,
   };
   const r = await fetch('/api/stocks', {
     method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(payload),
@@ -921,19 +1230,36 @@ async function addStock() {
   } else alert(await r.text());
 }
 
+function toggleTargetPriceMode(prefix) {
+  const tp  = parseFloat(document.getElementById(`${prefix}TargetPrice`)?.value) || 0;
+  const bdEl = document.getElementById(prefix === 'new' ? 'newBuyDrop' : 'editBuyDrop');
+  if (bdEl) { bdEl.disabled = tp > 0; bdEl.style.opacity = tp > 0 ? '0.35' : ''; }
+}
+
 // ─── Düzenle / Kaydet / Kaldır ────────────────────────────────────────────────
 function openEdit(ticker) {
   if (!lastState) return;
   const s = lastState.stocks[ticker];
   if (!s) return;
-  document.getElementById('editTicker').value       = ticker;
-  document.getElementById('editModalTitle').textContent = `${ticker}`;
-  document.getElementById('editT212Ticker').value   = s.t212_ticker;
-  document.getElementById('editBuyDrop').value      = s.buy_drop_pct;
-  document.getElementById('editStopLoss').value     = s.stop_loss_pct;
-  document.getElementById('editTakeProfit').value   = s.take_profit_pct;
-  document.getElementById('editMaxInv').value       = s.max_investment;
-  document.getElementById('editEnabled').checked    = s.enabled;
+  document.getElementById('editTicker').value            = ticker;
+  document.getElementById('editModalTitle').textContent  = `${ticker}`;
+  document.getElementById('editT212Ticker').value        = s.t212_ticker;
+  document.getElementById('editBuyDrop').value           = s.buy_drop_pct;
+  document.getElementById('editStopLoss').value          = s.stop_loss_pct;
+  document.getElementById('editTakeProfit').value        = s.take_profit_pct;
+  document.getElementById('editMaxInv').value            = s.max_investment;
+  document.getElementById('editEnabled').checked         = s.enabled;
+  document.getElementById('editXdayPeriod').value        = s.xday_period || 0;
+  document.getElementById('editXdayBuyDrop').value       = s.xday_buy_drop || 0;
+  document.getElementById('editXdaySellRise').value      = s.xday_sell_rise || 0;
+  document.getElementById('editSentimentSell').value     = s.sentiment_sell_below || 0;
+  document.getElementById('editSentimentBuy').value      = s.sentiment_buy_above || 0;
+  document.getElementById('editTargetPrice').value       = s.target_price || 0;
+  toggleTargetPriceMode('edit');
+  // Eğer gelişmiş koşullar doluysa bölümü aç
+  const hasAdvanced = (s.xday_period > 0 || s.sentiment_sell_below < 0 || s.sentiment_buy_above > 0 || s.target_price > 0);
+  const adv = document.getElementById('editAdvanced');
+  if (adv && hasAdvanced) bootstrap.Collapse.getOrCreateInstance(adv).show();
   new bootstrap.Modal(document.getElementById('editStockModal')).show();
 }
 
@@ -941,12 +1267,18 @@ async function saveStock() {
   const ticker = document.getElementById('editTicker').value;
   const payload = {
     ticker,
-    t212_ticker:     document.getElementById('editT212Ticker').value.trim(),
-    buy_drop_pct:    parseFloat(document.getElementById('editBuyDrop').value),
-    stop_loss_pct:   parseFloat(document.getElementById('editStopLoss').value),
-    take_profit_pct: parseFloat(document.getElementById('editTakeProfit').value),
-    max_investment:  parseFloat(document.getElementById('editMaxInv').value),
-    enabled:         document.getElementById('editEnabled').checked,
+    t212_ticker:          document.getElementById('editT212Ticker').value.trim(),
+    buy_drop_pct:         parseFloat(document.getElementById('editBuyDrop').value),
+    stop_loss_pct:        parseFloat(document.getElementById('editStopLoss').value),
+    take_profit_pct:      parseFloat(document.getElementById('editTakeProfit').value),
+    max_investment:       parseFloat(document.getElementById('editMaxInv').value),
+    enabled:              document.getElementById('editEnabled').checked,
+    xday_period:          parseInt(document.getElementById('editXdayPeriod').value) || 0,
+    xday_buy_drop:        parseFloat(document.getElementById('editXdayBuyDrop').value) || 0,
+    xday_sell_rise:       parseFloat(document.getElementById('editXdaySellRise').value) || 0,
+    sentiment_sell_below: parseFloat(document.getElementById('editSentimentSell').value) || 0,
+    sentiment_buy_above:  parseFloat(document.getElementById('editSentimentBuy').value) || 0,
+    target_price:         parseFloat(document.getElementById('editTargetPrice').value) || 0,
   };
   const r = await fetch(`/api/stocks/${ticker}`, {
     method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(payload),
@@ -977,6 +1309,181 @@ async function loadAccount() {
 // ─── Yardımcı ─────────────────────────────────────────────────────────────────
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── T212 Ticker Arama ────────────────────────────────────────────────────────
+
+async function searchT212Ticker(targetId, queryId, resultsId) {
+  const query = (document.getElementById(queryId)?.value || document.getElementById(targetId)?.value || '').trim();
+  const resultsEl = document.getElementById(resultsId);
+  if (!resultsEl) return;
+  if (!query) { resultsEl.style.display = 'none'; return; }
+
+  resultsEl.style.display = '';
+  resultsEl.innerHTML = `<div class="list-group-item text-secondary py-1">
+    <span class="spinner-border spinner-border-sm me-1"></span>${currentLang === 'tr' ? 'Aranıyor…' : 'Searching…'}</div>`;
+
+  try {
+    const data = await (await fetch(`/api/t212/search?q=${encodeURIComponent(query)}`, { headers: getAuthHeaders() })).json();
+    if (data.error) {
+      resultsEl.innerHTML = `<div class="list-group-item text-danger py-1">${escHtml(data.error)}</div>`;
+      return;
+    }
+    if (!data.length) {
+      resultsEl.innerHTML = `<div class="list-group-item text-secondary py-1">${currentLang === 'tr' ? 'Sonuç bulunamadı' : 'No results'}</div>`;
+      return;
+    }
+    resultsEl.innerHTML = data.map(item =>
+      `<button type="button" class="list-group-item list-group-item-action py-1 px-2"
+               onclick="selectT212Ticker('${targetId}','${resultsId}','${item.ticker}')">
+        <code style="font-size:0.8rem">${escHtml(item.ticker)}</code>
+        <span class="text-secondary ms-2" style="font-size:0.78rem">${escHtml(item.name)}</span>
+       </button>`
+    ).join('');
+  } catch(_) {
+    resultsEl.innerHTML = `<div class="list-group-item text-danger py-1">${currentLang === 'tr' ? 'Bağlantı hatası' : 'Connection error'}</div>`;
+  }
+}
+
+function selectT212Ticker(targetId, resultsId, ticker) {
+  const el = document.getElementById(targetId);
+  if (el) el.value = ticker;
+  const res = document.getElementById(resultsId);
+  if (res) res.style.display = 'none';
+}
+
+// ─── Formül ───────────────────────────────────────────────────────────────────
+
+function evalFormula(formula, stock) {
+  if (!formula || !formula.trim()) return null;
+  try {
+    const price = stock.current_price || 0;
+    const ref   = stock.reference_price || 0;
+    const drop  = stock.drop_from_ref_pct || 0;
+    const result = new Function('price', 'ref', 'drop',
+      `"use strict"; return (${formula.trim()})`)(price, ref, drop);
+    const n = parseFloat(result);
+    return isFinite(n) && n > 0 ? n : null;
+  } catch(_) { return null; }
+}
+
+document.getElementById('formulaModal').addEventListener('show.bs.modal', () => {
+  if (!lastState) return;
+  const list = document.getElementById('formulaStockList');
+  list.innerHTML = `<div class="form-check form-check-inline me-1">
+    <input class="form-check-input" type="checkbox" id="fstock-all" checked onchange="toggleAllFormulaStocks(this.checked)">
+    <label class="form-check-label fw-semibold" for="fstock-all" data-i18n="formula.all">Tümü</label>
+  </div>`;
+  Object.keys(lastState.stocks).forEach(ticker => {
+    const div = document.createElement('div');
+    div.className = 'form-check form-check-inline';
+    div.innerHTML = `<input class="form-check-input formula-stock-cb" type="checkbox" id="fstock-${ticker}" value="${ticker}" checked onchange="livePreview()">
+      <label class="form-check-label" for="fstock-${ticker}">${ticker}</label>`;
+    list.appendChild(div);
+  });
+  document.getElementById('formulaVarsHint').innerHTML = currentLang === 'tr'
+    ? `Değişkenler: <code>price</code> (güncel fiyat), <code>ref</code> (gün açılışı), <code>drop</code> (düşüş %) — Boş bırakılan alanlar değişmez`
+    : `Variables: <code>price</code> (current price), <code>ref</code> (day open), <code>drop</code> (drop %) — Empty fields are unchanged`;
+  applyTranslations();
+  livePreview();
+});
+
+function toggleAllFormulaStocks(checked) {
+  document.querySelectorAll('.formula-stock-cb').forEach(cb => { cb.checked = checked; });
+  livePreview();
+}
+
+function getSelectedFormulaStocks() {
+  return [...document.querySelectorAll('.formula-stock-cb')].filter(cb => cb.checked).map(cb => cb.value);
+}
+
+function _getFormulas() {
+  return {
+    buy_drop_pct:         document.getElementById('fBuyDrop').value,
+    stop_loss_pct:        document.getElementById('fStopLoss').value,
+    take_profit_pct:      document.getElementById('fTakeProfit').value,
+    max_investment:       document.getElementById('fMaxInv').value,
+    target_price:         document.getElementById('fTargetPrice').value,
+    xday_period:          document.getElementById('fXdayPeriod').value,
+    xday_buy_drop:        document.getElementById('fXdayBuyDrop').value,
+    xday_sell_rise:       document.getElementById('fXdaySellRise').value,
+    sentiment_sell_below: document.getElementById('fSentimentSell').value,
+    sentiment_buy_above:  document.getElementById('fSentimentBuy').value,
+  };
+}
+
+function livePreview() {
+  if (!lastState) return;
+  const tickers  = getSelectedFormulaStocks();
+  const formulas = _getFormulas();
+  const hasAny   = Object.values(formulas).some(f => f.trim());
+  if (!hasAny || !tickers.length) { document.getElementById('formulaPreview').innerHTML = ''; return; }
+
+  // Hangi sütunlarda en az bir formül var?
+  const basicCols    = ['buy_drop_pct','stop_loss_pct','take_profit_pct','max_investment'];
+  const advCols      = ['target_price','xday_period','xday_buy_drop','xday_sell_rise','sentiment_sell_below','sentiment_buy_above'];
+  const activeCols   = [...basicCols, ...advCols].filter(f => formulas[f]?.trim());
+  const colLabels    = {
+    buy_drop_pct:'Alım%', stop_loss_pct:'ZK%', take_profit_pct:'KA%', max_investment:'Maks$',
+    target_price:'Hedef$', xday_period:'XGün', xday_buy_drop:'XAlım%', xday_sell_rise:'XSatış%',
+    sentiment_sell_below:'HbSat', sentiment_buy_above:'HbAlım',
+  };
+  const intFields = new Set(['xday_period']);
+  const rows = tickers.map(ticker => {
+    const s = lastState.stocks[ticker];
+    const vals = {}, changed = {};
+    for (const f of activeCols) {
+      const r = evalFormula(formulas[f], s);
+      if (r !== null) { vals[f] = r; changed[f] = true; } else vals[f] = s[f];
+    }
+    const cells = activeCols.map(f => {
+      const v   = vals[f];
+      const txt = v != null ? (intFields.has(f) ? Math.round(v) : v.toFixed(2)) : '—';
+      return `<td class="${changed[f] ? 'text-warning fw-semibold' : ''}">${txt}</td>`;
+    }).join('');
+    return `<tr class="${Object.keys(changed).length ? '' : 'text-secondary'}"><td><b>${ticker}</b></td>${cells}</tr>`;
+  }).join('');
+  const headers = ['Hisse', ...activeCols.map(f => colLabels[f])].map(h => `<th>${h}</th>`).join('');
+  document.getElementById('formulaPreview').innerHTML = `
+    <div class="table-responsive mt-1">
+      <table class="table table-sm table-bordered mb-0" style="font-size:0.78rem">
+        <thead style="background:#161b22"><tr>${headers}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+async function applyFormulas() {
+  if (!lastState) return;
+  const tickers  = getSelectedFormulaStocks();
+  if (!tickers.length) return;
+  const formulas = _getFormulas();
+  let ok = 0, err = 0;
+  for (const ticker of tickers) {
+    const s = lastState.stocks[ticker];
+    const ev = f => evalFormula(formulas[f], s);
+    const payload = {
+      ticker,
+      t212_ticker:          s.t212_ticker,
+      buy_drop_pct:         ev('buy_drop_pct')         ?? s.buy_drop_pct,
+      stop_loss_pct:        ev('stop_loss_pct')        ?? s.stop_loss_pct,
+      take_profit_pct:      ev('take_profit_pct')      ?? s.take_profit_pct,
+      max_investment:       ev('max_investment')       ?? s.max_investment,
+      target_price:         ev('target_price')         ?? s.target_price,
+      xday_period:          ev('xday_period') != null  ? Math.round(ev('xday_period')) : s.xday_period,
+      xday_buy_drop:        ev('xday_buy_drop')        ?? s.xday_buy_drop,
+      xday_sell_rise:       ev('xday_sell_rise')       ?? s.xday_sell_rise,
+      sentiment_sell_below: ev('sentiment_sell_below') ?? s.sentiment_sell_below,
+      sentiment_buy_above:  ev('sentiment_buy_above')  ?? s.sentiment_buy_above,
+      enabled:              s.enabled,
+    };
+    const r = await fetch(`/api/stocks/${ticker}`, {
+      method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(payload),
+    });
+    if (r.ok) ok++; else err++;
+  }
+  if (err === 0) bootstrap.Modal.getInstance(document.getElementById('formulaModal')).hide();
+  else alert(currentLang === 'tr' ? `${ok} güncellendi, ${err} hata` : `${ok} updated, ${err} error(s)`);
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
