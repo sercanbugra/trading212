@@ -9,6 +9,7 @@ env/
 
 # Bot runtime dosyaları
 state.json
+config.json
 
 # Python
 __pycache__/

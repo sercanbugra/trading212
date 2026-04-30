@@ -1,28 +1,29 @@
 import os
 import sys
 
-# Otomatik venv — hangi python ile çalıştırılırsa çalıştırılsın
 _venv_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".venv", "bin", "python")
 if os.path.exists(_venv_py) and os.path.abspath(sys.executable) != os.path.abspath(_venv_py):
     os.execv(_venv_py, [_venv_py] + sys.argv)
 
 import asyncio
+import hashlib
 import json
 import logging
-import os
+import secrets as _secrets
 from contextlib import asynccontextmanager
 from typing import Optional, Set
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from bot import Bot, StockConfig, STATE_FILE
 import price_feed as _pf
 from price_feed import PriceFeed
-from t212_client import Trading212Client
+from t212_client import Trading212Client, Trading212Error
 
 load_dotenv()
 logging.basicConfig(
@@ -30,48 +31,102 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
-# Fiyat kaynakları başlatma
+# ─── Price feed (T212 key'leri buraya gelmiyor) ───────────────────────────────
 _td_key = os.getenv("TWELVEDATA_API_KEY", "")
 _fh_key = os.getenv("FINNHUB_API_KEY", "")
 _pf.init(twelvedata_key=_td_key, finnhub_key=_fh_key)
-if not _td_key and not _fh_key:
-    logging.warning("Hiçbir fiyat API key'i ayarlı değil")
 
-t212: Optional[Trading212Client] = None
-feed: PriceFeed = PriceFeed()
+# ─── Config dosyası — sadece UI şifre hash'i, T212 key'leri ASLA diske yazılmaz
+_data_dir = os.getenv("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
+CONFIG_FILE = os.path.join(_data_dir, "config.json")
+
+# RAM'de tutulan kimlik bilgileri — yeniden başlatmada sıfırlanır
+_t212_key: str = ""
+_t212_secret: str = ""
+_t212_demo: bool = True
+_t212_connected: bool = False
+_ui_pw_hash: str = ""
+_ui_pw_enabled: bool = False
+
+
+def _hash_pw(password: str) -> str:
+    salt = _secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200_000)
+    return f"{salt}:{key.hex()}"
+
+
+def _verify_pw(password: str, stored: str) -> bool:
+    try:
+        salt, key_hex = stored.split(":", 1)
+        key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 200_000)
+        return _secrets.compare_digest(key.hex(), key_hex)
+    except Exception:
+        return False
+
+
+def _load_config():
+    global _ui_pw_hash, _ui_pw_enabled
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        _ui_pw_hash = cfg.get("ui_password_hash", "")
+        _ui_pw_enabled = bool(_ui_pw_hash)
+
+
+def _save_config():
+    os.makedirs(_data_dir, exist_ok=True)
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump({"ui_password_hash": _ui_pw_hash}, f)
+
+
+def _ui_auth_ok(request: Request) -> bool:
+    if not _ui_pw_enabled:
+        return True
+    pw = request.headers.get("X-UI-Password", "")
+    return bool(pw) and _verify_pw(pw, _ui_pw_hash)
+
+
+# ─── Auth Middleware ──────────────────────────────────────────────────────────
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    _EXEMPT = {"/", "/ws", "/api/auth/status", "/api/auth/verify", "/api/auth/connect"}
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path not in self._EXEMPT and _ui_pw_enabled:
+            if not _ui_auth_ok(request):
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return await call_next(request)
+
+
+# ─── Global state ─────────────────────────────────────────────────────────────
+
+feed = PriceFeed()
 bot: Optional[Bot] = None
-_ws_clients: Set[WebSocket] = set()
 templates = Jinja2Templates(directory="templates")
+_ws_clients: Set[WebSocket] = set()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global t212, bot
-    api_key = os.getenv("T212_API_KEY", "")
-    api_secret = os.getenv("T212_API_SECRET", "")
-    demo = os.getenv("T212_DEMO", "true").lower() != "false"
-
-    t212 = Trading212Client(api_key=api_key, api_secret=api_secret, demo=demo)
-    bot = Bot(t212, feed)
-
+    global bot
+    _load_config()
+    bot = Bot(t212=None, feed=feed)
     bot.load_state()
-
-    # İlk çalıştırmada state dosyası yoksa varsayılan hisseleri ekle
     if not bot.stocks:
         bot.add_stock(StockConfig(ticker="ASTI"))
         bot.add_stock(StockConfig(ticker="POET"))
-
     asyncio.create_task(_broadcast_loop())
     yield
-
     await bot.stop()
-    await t212.close()
+    if bot.t212:
+        await bot.t212.close()
 
 
 app = FastAPI(title="Trading212 Bot", lifespan=lifespan)
+app.add_middleware(AuthMiddleware)
 
 
-# ─── Pydantic request models ────────────────────────────────────────────────
+# ─── Pydantic modelleri ───────────────────────────────────────────────────────
 
 class StockRequest(BaseModel):
     ticker: str
@@ -83,14 +138,98 @@ class StockRequest(BaseModel):
     enabled: bool = True
 
 
-# ─── HTML ────────────────────────────────────────────────────────────────────
+class AuthConnectRequest(BaseModel):
+    t212_key: str
+    t212_secret: str
+    demo: bool = True
+    ui_password: str = ""
+
+
+class AuthVerifyRequest(BaseModel):
+    ui_password: str
+
+
+# ─── Auth endpoint'leri ───────────────────────────────────────────────────────
+
+@app.get("/api/auth/status")
+async def auth_status():
+    return {
+        "ui_password_required": _ui_pw_enabled,
+        "t212_connected": _t212_connected,
+        "demo": _t212_demo,
+    }
+
+
+@app.post("/api/auth/verify")
+async def auth_verify(req: AuthVerifyRequest):
+    if not _ui_pw_enabled:
+        return {"ok": True}
+    if not _verify_pw(req.ui_password, _ui_pw_hash):
+        raise HTTPException(400, "Şifre yanlış / Wrong password")
+    return {"ok": True}
+
+
+@app.post("/api/auth/connect")
+async def auth_connect(req: AuthConnectRequest, request: Request):
+    """T212 key'lerini RAM'e al ve bot'u bağla. İlk bağlantıda UI şifresini ayarla."""
+    global _t212_key, _t212_secret, _t212_demo, _t212_connected
+    global _ui_pw_hash, _ui_pw_enabled
+
+    if _ui_pw_enabled and not _ui_auth_ok(request):
+        raise HTTPException(401, "Unauthorized")
+
+    # T212 key'lerini doğrula
+    test = Trading212Client(api_key=req.t212_key, api_secret=req.t212_secret, demo=req.demo)
+    try:
+        await test.get_account_summary()
+    except Trading212Error as e:
+        raise HTTPException(400, f"T212 bağlantısı başarısız: {e}")
+    finally:
+        await test.close()
+
+    # Sadece RAM'e yaz — diske asla
+    _t212_key = req.t212_key
+    _t212_secret = req.t212_secret
+    _t212_demo = req.demo
+    _t212_connected = True
+
+    # UI şifresi henüz ayarlı değilse ve kullanıcı ayarlamak istiyorsa
+    if req.ui_password and not _ui_pw_enabled:
+        _ui_pw_hash = _hash_pw(req.ui_password)
+        _ui_pw_enabled = True
+        _save_config()
+
+    # Bot'un T212 client'ını güncelle
+    if bot.t212:
+        await bot.t212.close()
+    bot.t212 = Trading212Client(api_key=_t212_key, api_secret=_t212_secret, demo=_t212_demo)
+
+    return {"ok": True, "demo": _t212_demo}
+
+
+@app.post("/api/auth/disconnect")
+async def auth_disconnect(request: Request):
+    """T212 bağlantısını kes (key'leri RAM'den sil)."""
+    global _t212_key, _t212_secret, _t212_connected
+    if not _ui_auth_ok(request):
+        raise HTTPException(401)
+    await bot.stop()
+    if bot.t212:
+        await bot.t212.close()
+        bot.t212 = None
+    _t212_key = _t212_secret = ""
+    _t212_connected = False
+    return {"ok": True}
+
+
+# ─── HTML ─────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-# ─── Bot control ─────────────────────────────────────────────────────────────
+# ─── Bot kontrolü ─────────────────────────────────────────────────────────────
 
 @app.post("/api/bot/start")
 async def start_bot():
@@ -106,14 +245,12 @@ async def stop_bot():
 
 @app.post("/api/bot/tick")
 async def manual_tick():
-    """Stratejiyi hemen tetikle (test için)"""
     await bot.manual_tick()
     return {"ok": True}
 
 
 @app.post("/api/stocks/{ticker}/sell")
 async def manual_sell(ticker: str):
-    """Açık pozisyonu anlık fiyattan manuel sat"""
     if ticker not in bot.positions:
         return {"error": f"{ticker} için açık pozisyon yok"}
     pos = bot.positions[ticker]
@@ -124,24 +261,28 @@ async def manual_sell(ticker: str):
     return {"ok": True}
 
 
-# ─── State ───────────────────────────────────────────────────────────────────
+# ─── State ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/state")
 async def get_state():
     state = bot.get_state()
     state["api_stats"] = _pf.get_stats()
+    state["t212_connected"] = _t212_connected
+    state["demo"] = _t212_demo
     return state
 
 
 @app.get("/api/account")
 async def get_account():
+    if not _t212_connected or bot.t212 is None:
+        return {"error": "T212 bağlı değil"}
     try:
-        return await t212.get_account_summary()
+        return await bot.t212.get_account_summary()
     except Exception as e:
         return {"error": str(e)}
 
 
-# ─── Stock management ────────────────────────────────────────────────────────
+# ─── Hisse yönetimi ───────────────────────────────────────────────────────────
 
 @app.post("/api/stocks")
 async def add_stock(req: StockRequest):
@@ -165,11 +306,17 @@ async def remove_stock(ticker: str):
     return {"ok": True}
 
 
-# ─── State import / export ───────────────────────────────────────────────────
+# ─── Fiyat verisi ─────────────────────────────────────────────────────────────
+
+@app.get("/api/candles/{ticker}")
+async def get_candles(ticker: str):
+    return await feed.get_candles_15m(ticker)
+
+
+# ─── State import / export ────────────────────────────────────────────────────
 
 @app.get("/api/state/export")
 async def export_state():
-    """İndirilebilir ham state (hisse listesi + işlem geçmişi)"""
     if not os.path.exists(STATE_FILE):
         return {}
     with open(STATE_FILE, "r", encoding="utf-8") as f:
@@ -178,12 +325,10 @@ async def export_state():
 
 @app.post("/api/state/import")
 async def import_state(request: Request):
-    """Ham state JSON'ını yükle ve botu yeniden başlat"""
     data = await request.json()
     os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    # Mevcut state'i temizle ve yeniden yükle
     bot.stocks.clear()
     bot.positions.clear()
     bot.trades.clear()
@@ -194,17 +339,13 @@ async def import_state(request: Request):
     return {"ok": True, "stocks": len(bot.stocks), "trades": len(bot.trades)}
 
 
-# ─── Price data ──────────────────────────────────────────────────────────────
-
-@app.get("/api/candles/{ticker}")
-async def get_candles(ticker: str):
-    return await feed.get_candles_15m(ticker)
-
-
-# ─── WebSocket ───────────────────────────────────────────────────────────────
+# ─── WebSocket ────────────────────────────────────────────────────────────────
 
 @app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
+async def websocket_endpoint(ws: WebSocket, p: str = ""):
+    if _ui_pw_enabled and not _verify_pw(p, _ui_pw_hash):
+        await ws.close(code=4001)
+        return
     await ws.accept()
     _ws_clients.add(ws)
     try:
@@ -215,10 +356,11 @@ async def websocket_endpoint(ws: WebSocket):
 
 
 async def _broadcast_loop():
-    """Her 5 saniyede bir tüm bağlı istemcilere state gönder"""
     while True:
         if _ws_clients and bot:
             state = bot.get_state()
+            state["t212_connected"] = _t212_connected
+            state["demo"] = _t212_demo
             msg = json.dumps(state)
             dead: Set[WebSocket] = set()
             for ws in list(_ws_clients):
@@ -230,7 +372,7 @@ async def _broadcast_loop():
         await asyncio.sleep(5)
 
 
-# ─── Entry point ─────────────────────────────────────────────────────────────
+# ─── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn

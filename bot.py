@@ -76,7 +76,7 @@ _REASON_EN = {"signal": "Signal", "stop_loss": "Stop Loss",  "take_profit": "Tak
 
 
 class Bot:
-    def __init__(self, t212: Trading212Client, feed: PriceFeed):
+    def __init__(self, t212: Optional["Trading212Client"], feed: PriceFeed):
         self.t212 = t212
         self.feed = feed
         self.stocks: Dict[str, StockConfig] = {}
@@ -124,6 +124,9 @@ class Bot:
 
     async def start(self):
         if self.running:
+            return
+        if self.t212 is None:
+            self._log("T212 bağlı değil, bot başlatılamaz", level="error", en="T212 not connected, cannot start bot")
             return
         self.running = True
         self._log("Bot başlatıldı ✓", en="Bot started ✓")
@@ -255,6 +258,9 @@ class Bot:
     # ---------- Order execution ----------
 
     async def _buy(self, ticker: str, config: StockConfig, qty: float, price: float):
+        if self.t212 is None:
+            self._log(f"{ticker}: T212 bağlı değil, alım atlandı", level="error", en=f"{ticker}: T212 not connected, buy skipped")
+            return
         try:
             result = await self.t212.place_market_order(config.t212_ticker, qty)
             order_id = result.get("id") if result else None
@@ -281,6 +287,9 @@ class Bot:
             )
 
     async def _sell(self, ticker: str, pos: Position, reason: str, price: float):
+        if self.t212 is None:
+            self._log(f"{ticker}: T212 bağlı değil, satım atlandı", level="error", en=f"{ticker}: T212 not connected, sell skipped")
+            return
         try:
             result = await self.t212.place_market_order(
                 self.stocks[ticker].t212_ticker, -pos.quantity

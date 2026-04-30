@@ -34,9 +34,84 @@
     .pos-card   { background: #0d2414; border: 1px solid #238636; border-radius: 6px; }
     .no-pos-card { background: #1c1c1c; border: 1px solid var(--border); border-radius: 6px; }
     .lang-btn { font-size: 0.75rem; padding: 2px 8px; }
+    /* Auth overlay */
+    .auth-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: #0d1117;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .auth-card { width: 100%; max-width: 440px; }
+    .auth-error { color: #f85149; font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
+    .auth-hint  { font-size: 0.78rem; color: #6e7681; margin-top: 4px; }
   </style>
 </head>
 <body>
+
+<!-- ── AUTH OVERLAY ───────────────────────────────────────────────────── -->
+<div id="authOverlay" class="auth-overlay">
+  <div class="auth-card card p-4 shadow-lg">
+    <div class="text-center mb-4">
+      <i class="bi bi-robot fs-1 text-primary"></i>
+      <h5 class="mt-2 mb-0 fw-bold">Trading212 Bot</h5>
+    </div>
+
+    <!-- Adım 1: UI şifre girişi -->
+    <div id="authStepLogin" style="display:none">
+      <p class="text-secondary mb-3" data-i18n="auth.loginTitle">Dashboard şifrenizi girin</p>
+      <div class="mb-3">
+        <label class="form-label" data-i18n="auth.uiPassword">Şifre</label>
+        <input type="password" id="uiPwInput" class="form-control"
+               onkeydown="if(event.key==='Enter') submitLogin()" autofocus />
+      </div>
+      <button class="btn btn-primary w-100" onclick="submitLogin()" data-i18n="auth.loginBtn">Giriş</button>
+      <div class="auth-error text-center" id="loginError"></div>
+    </div>
+
+    <!-- Adım 2: T212 bağlantısı -->
+    <div id="authStepConnect" style="display:none">
+      <p class="text-secondary mb-3" id="connectSubtitle" data-i18n="auth.connectSubtitle">
+        Trading212 API bilgilerinizi girin
+      </p>
+      <div class="mb-2">
+        <label class="form-label" data-i18n="auth.apiKey">API Key</label>
+        <input type="text" id="t212KeyInput" class="form-control font-monospace"
+               autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="mb-2">
+        <label class="form-label" data-i18n="auth.apiSecret">API Secret</label>
+        <input type="password" id="t212SecretInput" class="form-control font-monospace"
+               autocomplete="off" onkeydown="if(event.key==='Enter') submitConnect()" />
+      </div>
+      <div class="mb-3">
+        <label class="form-label" data-i18n="auth.account">Hesap türü</label>
+        <select id="t212DemoSelect" class="form-select">
+          <option value="true">Demo</option>
+          <option value="false">Live / Gerçek</option>
+        </select>
+      </div>
+      <!-- İlk kurulumda göster: UI şifre oluşturma -->
+      <div id="uiPwSection" class="mb-3 p-3 rounded" style="background:#0d2414; border:1px solid #238636">
+        <label class="form-label mb-1" data-i18n="auth.uiPasswordOpt">
+          Dashboard şifresi <span class="text-secondary">(opsiyonel)</span>
+        </label>
+        <input type="password" id="newUiPwInput" class="form-control mb-1"
+               placeholder="Boş bırakılırsa şifre koruması olmaz" />
+        <div class="auth-hint" data-i18n="auth.uiPasswordHint">
+          Siteye girişi korur. Şifre hash'i diske kaydedilir; T212 key'leri asla diske yazılmaz.
+        </div>
+      </div>
+      <button class="btn btn-primary w-100" id="connectBtn" onclick="submitConnect()" data-i18n="auth.connectBtn">
+        Bağlan
+      </button>
+      <div class="auth-error text-center" id="connectError"></div>
+    </div>
+
+    <!-- Yükleniyor -->
+    <div id="authStepLoading" class="text-center py-3">
+      <div class="spinner-border text-primary" role="status"></div>
+    </div>
+  </div>
+</div>
 
 <!-- ── NAVBAR ─────────────────────────────────────────────────────── -->
 <nav class="navbar navbar-expand-lg px-3 py-2">
@@ -64,6 +139,10 @@
     <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addStockModal">
       <i class="bi bi-plus-lg"></i> <span data-i18n="nav.addStock">Hisse Ekle</span>
     </button>
+    <!-- Ayarlar -->
+    <button class="btn btn-sm btn-outline-secondary" onclick="showReconnectOverlay()" title="T212 Ayarları">
+      <i class="bi bi-key"></i>
+    </button>
     <!-- Dil seçici -->
     <div class="btn-group" role="group">
       <button id="btnTR" class="btn btn-sm btn-outline-light lang-btn active" onclick="setLang('tr')">TR</button>
@@ -71,6 +150,15 @@
     </div>
   </div>
 </nav>
+
+<!-- T212 bağlantısı koptu — bildirim bandı -->
+<div id="reconnectBanner" class="alert alert-warning d-none m-2 py-2" style="border-radius:6px">
+  <i class="bi bi-exclamation-triangle me-2"></i>
+  <span data-i18n="auth.disconnected">T212 bağlantısı kesildi.</span>
+  <button class="btn btn-sm btn-warning ms-2" onclick="showReconnectOverlay()" data-i18n="auth.reconnectBtn">
+    Yeniden Bağlan
+  </button>
+</div>
 
 <!-- ── MAIN ───────────────────────────────────────────────────────── -->
 <div class="container-fluid px-3 py-3">
@@ -249,6 +337,19 @@ const LANG = {
     'err.noPos': 'için açık pozisyon yok',
     'err.addTicker': 'Sembol zorunlu',
     'err.save': 'Kayıt hatası: ',
+    'auth.loginTitle': 'Dashboard şifrenizi girin',
+    'auth.uiPassword': 'Şifre',
+    'auth.loginBtn': 'Giriş',
+    'auth.connectTitle': 'T212 Bağlantısı',
+    'auth.connectSubtitle': 'Trading212 API bilgilerinizi girin',
+    'auth.apiKey': 'API Key',
+    'auth.apiSecret': 'API Secret',
+    'auth.account': 'Hesap türü',
+    'auth.uiPasswordOpt': 'Dashboard Şifresi',
+    'auth.uiPasswordHint': 'Siteye girişi korur. Şifre hash\'i diske kaydedilir; T212 key\'leri asla diske yazılmaz.',
+    'auth.connectBtn': 'Bağlan',
+    'auth.disconnected': 'T212 bağlantısı kesildi (sunucu yeniden başladı).',
+    'auth.reconnectBtn': 'Yeniden Bağlan',
   },
   en: {
     'nav.running': 'Running', 'nav.stopped': 'Stopped',
@@ -284,6 +385,19 @@ const LANG = {
     'err.noPos': 'has no open position',
     'err.addTicker': 'Symbol is required',
     'err.save': 'Save error: ',
+    'auth.loginTitle': 'Enter your dashboard password',
+    'auth.uiPassword': 'Password',
+    'auth.loginBtn': 'Sign In',
+    'auth.connectTitle': 'T212 Connection',
+    'auth.connectSubtitle': 'Enter your Trading212 API credentials',
+    'auth.apiKey': 'API Key',
+    'auth.apiSecret': 'API Secret',
+    'auth.account': 'Account type',
+    'auth.uiPasswordOpt': 'Dashboard Password',
+    'auth.uiPasswordHint': 'Protects site access. Password hash saved to disk; T212 keys are never written to disk.',
+    'auth.connectBtn': 'Connect',
+    'auth.disconnected': 'T212 connection lost (server restarted).',
+    'auth.reconnectBtn': 'Reconnect',
   }
 };
 
@@ -312,21 +426,218 @@ function applyTranslations() {
   });
 }
 
-// ─── State ────────────────────────────────────────────────────────────────
-let lastState = null;
-let displayedLogCount = 0;
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+let _uiPw = '';
+let _serverStatus = null;
 
-// ─── WebSocket ────────────────────────────────────────────────────────────
-function connectWS() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.onmessage = e => { lastState = JSON.parse(e.data); renderAll(lastState); };
-  ws.onclose = () => setTimeout(connectWS, 3000);
-  setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 20000);
+function getAuthHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (_uiPw) h['X-UI-Password'] = _uiPw;
+  return h;
 }
 
-// ─── Render ───────────────────────────────────────────────────────────────
+async function initAuth() {
+  try {
+    _serverStatus = await fetch('/api/auth/status').then(r => r.json());
+  } catch (_) {
+    setTimeout(initAuth, 3000);
+    return;
+  }
+
+  // UI şifresi gerekiyor mu?
+  if (_serverStatus.ui_password_required) {
+    const saved = localStorage.getItem('ui_password');
+    if (saved) {
+      const r = await fetch('/api/auth/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ui_password: saved }),
+      });
+      if (r.ok) {
+        _uiPw = saved;
+      } else {
+        localStorage.removeItem('ui_password');
+        showLoginStep();
+        return;
+      }
+    } else {
+      showLoginStep();
+      return;
+    }
+  }
+
+  await checkT212Connect();
+}
+
+async function checkT212Connect() {
+  const status = await fetch('/api/auth/status').then(r => r.json());
+
+  if (status.t212_connected) {
+    showDashboard(status);
+    return;
+  }
+
+  // Kayıtlı key var mı?
+  const key    = localStorage.getItem('t212_key');
+  const secret = localStorage.getItem('t212_secret');
+  if (key && secret) {
+    const demo = localStorage.getItem('t212_demo') !== 'false';
+    const r = await fetch('/api/auth/connect', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ t212_key: key, t212_secret: secret, demo, ui_password: '' }),
+    });
+    if (r.ok) {
+      const data = await r.json();
+      showDashboard(data);
+      return;
+    }
+    // Key geçersiz, temizle
+    localStorage.removeItem('t212_key');
+    localStorage.removeItem('t212_secret');
+  }
+
+  // İlk kurulum mu, yoksa yeniden bağlantı mı?
+  const isFirstSetup = !status.ui_password_required;
+  showConnectStep(isFirstSetup);
+}
+
+function showLoginStep() {
+  document.getElementById('authStepLoading').style.display = 'none';
+  document.getElementById('authStepLogin').style.display   = '';
+  document.getElementById('authStepConnect').style.display = 'none';
+  setTimeout(() => document.getElementById('uiPwInput').focus(), 100);
+}
+
+function showConnectStep(isFirstSetup = false) {
+  document.getElementById('authStepLoading').style.display = 'none';
+  document.getElementById('authStepLogin').style.display   = 'none';
+  document.getElementById('authStepConnect').style.display = '';
+  document.getElementById('uiPwSection').style.display = isFirstSetup ? '' : 'none';
+  applyTranslations();
+  setTimeout(() => document.getElementById('t212KeyInput').focus(), 100);
+}
+
+function showReconnectOverlay() {
+  document.getElementById('authOverlay').style.display = 'flex';
+  document.getElementById('authStepLoading').style.display = 'none';
+  document.getElementById('authStepLogin').style.display   = 'none';
+  document.getElementById('authStepConnect').style.display = '';
+  // Reconnect'te UI şifre bölümünü gizle
+  document.getElementById('uiPwSection').style.display = 'none';
+  // Kayıtlı key'leri doldur
+  document.getElementById('t212KeyInput').value    = localStorage.getItem('t212_key') || '';
+  document.getElementById('t212SecretInput').value = localStorage.getItem('t212_secret') || '';
+  document.getElementById('t212DemoSelect').value  = localStorage.getItem('t212_demo') || 'true';
+  document.getElementById('connectError').textContent = '';
+  applyTranslations();
+}
+
+async function submitLogin() {
+  const pw = document.getElementById('uiPwInput').value;
+  const r = await fetch('/api/auth/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ui_password: pw }),
+  });
+  if (!r.ok) {
+    document.getElementById('loginError').textContent = currentLang === 'tr'
+      ? 'Şifre yanlış' : 'Wrong password';
+    return;
+  }
+  _uiPw = pw;
+  localStorage.setItem('ui_password', pw);
+  document.getElementById('loginError').textContent = '';
+  await checkT212Connect();
+}
+
+async function submitConnect() {
+  const key    = document.getElementById('t212KeyInput').value.trim();
+  const secret = document.getElementById('t212SecretInput').value.trim();
+  const demo   = document.getElementById('t212DemoSelect').value === 'true';
+  const newPw  = document.getElementById('newUiPwInput')?.value || '';
+
+  if (!key || !secret) {
+    document.getElementById('connectError').textContent = currentLang === 'tr'
+      ? 'API Key ve Secret zorunlu' : 'API Key and Secret are required';
+    return;
+  }
+
+  const btn = document.getElementById('connectBtn');
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>${t('auth.connectBtn')}`;
+
+  const r = await fetch('/api/auth/connect', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ t212_key: key, t212_secret: secret, demo, ui_password: newPw }),
+  });
+
+  btn.disabled = false;
+  btn.textContent = t('auth.connectBtn');
+
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    document.getElementById('connectError').textContent = err.detail || (currentLang === 'tr' ? 'Bağlantı hatası' : 'Connection error');
+    return;
+  }
+
+  const data = await r.json();
+  localStorage.setItem('t212_key', key);
+  localStorage.setItem('t212_secret', secret);
+  localStorage.setItem('t212_demo', demo ? 'true' : 'false');
+  if (newPw) {
+    _uiPw = newPw;
+    localStorage.setItem('ui_password', newPw);
+  }
+
+  document.getElementById('connectError').textContent = '';
+  showDashboard(data);
+}
+
+function showDashboard(statusData) {
+  document.getElementById('authOverlay').style.display = 'none';
+  document.getElementById('reconnectBanner').classList.add('d-none');
+  if (statusData?.demo !== undefined) {
+    updateEnvBadge(statusData.demo);
+  }
+  connectWS();
+  loadAccount();
+  setInterval(loadAccount, 30000);
+}
+
+function updateEnvBadge(demo) {
+  const badge = document.getElementById('envBadge');
+  badge.textContent  = demo ? 'DEMO' : 'LIVE';
+  badge.className    = demo ? 'badge bg-warning text-dark' : 'badge bg-danger';
+}
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let lastState = null;
+let displayedLogCount = 0;
+let _wsInstance = null;
+
+// ─── WebSocket ────────────────────────────────────────────────────────────────
+function connectWS() {
+  if (_wsInstance && _wsInstance.readyState < 2) return; // zaten bağlı
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${proto}://${location.host}/ws${_uiPw ? '?p=' + encodeURIComponent(_uiPw) : ''}`;
+  _wsInstance = new WebSocket(url);
+  _wsInstance.onmessage = e => { lastState = JSON.parse(e.data); renderAll(lastState); };
+  _wsInstance.onclose   = () => setTimeout(connectWS, 3000);
+  setInterval(() => { if (_wsInstance?.readyState === 1) _wsInstance.send('ping'); }, 20000);
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
 function renderAll(state) {
+  // T212 bağlantısı koptu mu?
+  const banner = document.getElementById('reconnectBanner');
+  if (!state.t212_connected) {
+    banner.classList.remove('d-none');
+  } else {
+    banner.classList.add('d-none');
+  }
+
   renderNav(state);
   renderStocks(state.stocks);
   renderLogs(state.logs);
@@ -339,7 +650,9 @@ function renderNav(state) {
     document.getElementById('apiTotal').textContent = s.total;
     document.getElementById('apiStats').title = `TD:${s.twelvedata} FH:${s.finnhub} YF:${s.yfinance} Err:${s.errors}`;
   }
-  const badge = document.getElementById('statusBadge');
+  if (state.demo !== undefined) updateEnvBadge(state.demo);
+
+  const badge    = document.getElementById('statusBadge');
   const btnStart = document.getElementById('btnStart');
   const btnStop  = document.getElementById('btnStop');
   if (state.running) {
@@ -462,7 +775,6 @@ function updateCard(ticker, s) {
   const marker = document.getElementById(`dropMarker-${ticker}`);
   if (marker) marker.style.left = pct2left(s.buy_drop_pct) + '%';
 
-  // Badge labels (dil değişince güncellenir)
   const bdEl = document.getElementById(`bd-${ticker}`);
   if (bdEl && bdEl.parentElement) {
     bdEl.parentElement.innerHTML = `<i class="bi bi-arrow-down"></i> ${t('card.buyBadge')}: -%<span id="bd-${ticker}">${s.buy_drop_pct}</span>`;
@@ -513,7 +825,7 @@ function updateCard(ticker, s) {
 function pct2left(pct, max = 20) { return Math.min(pct / max * 100, 100); }
 function setIf(id, val) { const el = document.getElementById(id); if (el && val != null) el.textContent = val; }
 
-// ─── Log ──────────────────────────────────────────────────────────────────
+// ─── Log ──────────────────────────────────────────────────────────────────────
 function renderLogs(logs) {
   if (!logs || logs.length === displayedLogCount) return;
   const box = document.getElementById('logBox');
@@ -541,7 +853,7 @@ function refreshLogLanguage() {
 
 function clearLogs() { document.getElementById('logBox').innerHTML = ''; displayedLogCount = 0; }
 
-// ─── Trades ───────────────────────────────────────────────────────────────
+// ─── Trades ───────────────────────────────────────────────────────────────────
 function renderTrades(trades) {
   const tbody = document.getElementById('tradesBody');
   if (!trades || trades.length === 0) return;
@@ -568,26 +880,26 @@ function renderTrades(trades) {
   }).join('') || `<tr><td colspan="6" class="text-center text-secondary py-3">${t('trades.empty')}</td></tr>`;
 }
 
-// ─── Bot control ──────────────────────────────────────────────────────────
-async function startBot() { await fetch('/api/bot/start', { method: 'POST' }); }
-async function stopBot()  { await fetch('/api/bot/stop',  { method: 'POST' }); }
+// ─── Bot kontrolü ─────────────────────────────────────────────────────────────
+async function startBot()  { await fetch('/api/bot/start', { method: 'POST', headers: getAuthHeaders() }); }
+async function stopBot()   { await fetch('/api/bot/stop',  { method: 'POST', headers: getAuthHeaders() }); }
 async function manualTick() {
   const btn = event.currentTarget;
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-  await fetch('/api/bot/tick', { method: 'POST' });
+  await fetch('/api/bot/tick', { method: 'POST', headers: getAuthHeaders() });
   setTimeout(() => { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i>'; }, 2000);
 }
 
-// ─── Manual sell ──────────────────────────────────────────────────────────
+// ─── Manuel satış ─────────────────────────────────────────────────────────────
 async function manualSell(ticker) {
   if (!confirm(`${ticker} ${t('confirm.sell')}`)) return;
-  const r = await fetch(`/api/stocks/${ticker}/sell`, { method: 'POST' });
+  const r = await fetch(`/api/stocks/${ticker}/sell`, { method: 'POST', headers: getAuthHeaders() });
   const data = await r.json();
   if (data.error) alert(data.error);
 }
 
-// ─── Add stock ────────────────────────────────────────────────────────────
+// ─── Hisse ekle ───────────────────────────────────────────────────────────────
 async function addStock() {
   const ticker = document.getElementById('newTicker').value.trim().toUpperCase();
   if (!ticker) return alert(t('err.addTicker'));
@@ -600,26 +912,28 @@ async function addStock() {
     max_investment:  parseFloat(document.getElementById('newMaxInv').value),
     enabled: true,
   };
-  const r = await fetch('/api/stocks', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const r = await fetch('/api/stocks', {
+    method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(payload),
+  });
   if (r.ok) {
     bootstrap.Modal.getInstance(document.getElementById('addStockModal')).hide();
     document.getElementById('newTicker').value = '';
   } else alert(await r.text());
 }
 
-// ─── Edit / Save / Remove ─────────────────────────────────────────────────
+// ─── Düzenle / Kaydet / Kaldır ────────────────────────────────────────────────
 function openEdit(ticker) {
   if (!lastState) return;
   const s = lastState.stocks[ticker];
   if (!s) return;
-  document.getElementById('editTicker').value    = ticker;
-  document.getElementById('editModalTitle').textContent = `${ticker} ${t('modal.editTitle')}`;
-  document.getElementById('editT212Ticker').value  = s.t212_ticker;
-  document.getElementById('editBuyDrop').value    = s.buy_drop_pct;
-  document.getElementById('editStopLoss').value   = s.stop_loss_pct;
-  document.getElementById('editTakeProfit').value = s.take_profit_pct;
-  document.getElementById('editMaxInv').value     = s.max_investment;
-  document.getElementById('editEnabled').checked  = s.enabled;
+  document.getElementById('editTicker').value       = ticker;
+  document.getElementById('editModalTitle').textContent = `${ticker}`;
+  document.getElementById('editT212Ticker').value   = s.t212_ticker;
+  document.getElementById('editBuyDrop').value      = s.buy_drop_pct;
+  document.getElementById('editStopLoss').value     = s.stop_loss_pct;
+  document.getElementById('editTakeProfit').value   = s.take_profit_pct;
+  document.getElementById('editMaxInv').value       = s.max_investment;
+  document.getElementById('editEnabled').checked    = s.enabled;
   new bootstrap.Modal(document.getElementById('editStockModal')).show();
 }
 
@@ -634,7 +948,9 @@ async function saveStock() {
     max_investment:  parseFloat(document.getElementById('editMaxInv').value),
     enabled:         document.getElementById('editEnabled').checked,
   };
-  const r = await fetch(`/api/stocks/${ticker}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const r = await fetch(`/api/stocks/${ticker}`, {
+    method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(payload),
+  });
   if (r.ok) bootstrap.Modal.getInstance(document.getElementById('editStockModal')).hide();
   else alert(t('err.save') + await r.text());
 }
@@ -642,32 +958,30 @@ async function saveStock() {
 async function removeStock() {
   const ticker = document.getElementById('editTicker').value;
   if (!confirm(`${ticker} ${t('confirm.remove')}`)) return;
-  const r = await fetch(`/api/stocks/${ticker}`, { method: 'DELETE' });
+  const r = await fetch(`/api/stocks/${ticker}`, { method: 'DELETE', headers: getAuthHeaders() });
   if (r.ok) {
     document.getElementById(`col-${ticker}`)?.remove();
     bootstrap.Modal.getInstance(document.getElementById('editStockModal')).hide();
   }
 }
 
-// ─── Account balance ──────────────────────────────────────────────────────
+// ─── Hesap bakiyesi ───────────────────────────────────────────────────────────
 async function loadAccount() {
   try {
-    const data = await (await fetch('/api/account')).json();
+    const data = await (await fetch('/api/account', { headers: getAuthHeaders() })).json();
     if (data.cash) document.getElementById('accountBalance').textContent = `$${(data.cash.availableToTrade ?? 0).toFixed(2)}`;
     if (data.error) document.getElementById('accountBalance').textContent = '—';
-  } catch(_) {}
+  } catch (_) {}
 }
 
-// ─── Utility ──────────────────────────────────────────────────────────────
+// ─── Yardımcı ─────────────────────────────────────────────────────────────────
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ─── Init ─────────────────────────────────────────────────────────────────
-setLang(currentLang);   // dil butonlarını ve data-i18n'leri ayarla
-connectWS();
-loadAccount();
-setInterval(loadAccount, 30000);
+// ─── Init ─────────────────────────────────────────────────────────────────────
+setLang(currentLang);
+initAuth();
 </script>
 </body>
 </html>
