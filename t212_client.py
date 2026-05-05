@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 import aiohttp
@@ -28,6 +29,8 @@ class Trading212Client:
             self._auth_header = api_key
 
         self._session: Optional[aiohttp.ClientSession] = None
+        self._instruments: List[Dict] = []
+        self._instruments_ts: float = 0.0
 
     async def _session_get(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -121,4 +124,24 @@ class Trading212Client:
     # ---------- Metadata ----------
 
     async def get_instruments(self) -> List[Dict]:
-        return await self._request("GET", "/equity/metadata/instruments")
+        if not self._instruments or (time.time() - self._instruments_ts) > 21600:
+            self._instruments = await self._request("GET", "/equity/metadata/instruments")
+            self._instruments_ts = time.time()
+        return self._instruments
+
+    async def find_instrument(self, ticker: str) -> Optional[str]:
+        """Return the T212 ticker string for a given symbol, or None if not found."""
+        instruments = await self.get_instruments()
+        ticker_upper = ticker.upper()
+        # Prefer exact ticker prefix match (e.g. "SYRE" matches "SYRE_US_EQ")
+        for inst in instruments:
+            t = inst.get("ticker", "")
+            if t.upper().startswith(ticker_upper + "_") or t.upper() == ticker_upper:
+                return t
+        # Fallback: match by shortName / name
+        ticker_lower = ticker.lower()
+        for inst in instruments:
+            name = (inst.get("shortName") or inst.get("name") or "").lower()
+            if ticker_lower == name:
+                return inst.get("ticker")
+        return None

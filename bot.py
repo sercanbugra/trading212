@@ -326,28 +326,59 @@ class Bot:
             return
         try:
             result = await self.t212.place_market_order(config.t212_ticker, qty)
-            order_id = result.get("id") if result else None
-            self.positions[ticker] = Position(
-                ticker=ticker,
-                quantity=qty,
-                buy_price=price,
-                stop_loss_pct=config.stop_loss_pct,
-                take_profit_pct=config.take_profit_pct,
-                t212_order_id=order_id,
-            )
-            self.trades.append(
-                Trade(ticker=ticker, side="BUY", quantity=qty, price=price, reason="signal")
-            )
-            self._log(
-                f"{ticker}: ALINDI {qty} adet @ ${price:.4f} (${qty * price:.2f}) | emir #{order_id}",
-                en=f"{ticker}: BOUGHT {qty} shares @ ${price:.4f} (${qty * price:.2f}) | order #{order_id}",
-            )
-            self.save_state()
         except Trading212Error as e:
-            self._log(
-                f"{ticker}: alım emri başarısız — {e}", level="error",
-                en=f"{ticker}: buy order failed — {e}",
-            )
+            if "404" in str(e) and ("not found" in str(e).lower() or "does not exist" in str(e).lower()):
+                # Try to find the correct T212 ticker automatically
+                try:
+                    found = await self.t212.find_instrument(ticker)
+                except Exception:
+                    found = None
+                if found and found != config.t212_ticker:
+                    self._log(
+                        f"{ticker}: T212 sembolü '{config.t212_ticker}' bulunamadı, '{found}' olarak düzeltildi, tekrar deneniyor",
+                        level="warning",
+                        en=f"{ticker}: T212 symbol '{config.t212_ticker}' not found, corrected to '{found}', retrying",
+                    )
+                    config.t212_ticker = found
+                    self.save_state()
+                    try:
+                        result = await self.t212.place_market_order(config.t212_ticker, qty)
+                    except Trading212Error as e2:
+                        self._log(
+                            f"{ticker}: alım emri başarısız — {e2}", level="error",
+                            en=f"{ticker}: buy order failed — {e2}",
+                        )
+                        return
+                else:
+                    self._log(
+                        f"{ticker}: T212'de '{config.t212_ticker}' bulunamadı — sembolü UI'dan düzeltin",
+                        level="error",
+                        en=f"{ticker}: '{config.t212_ticker}' not found on T212 — fix the T212 ticker in the UI",
+                    )
+                    return
+            else:
+                self._log(
+                    f"{ticker}: alım emri başarısız — {e}", level="error",
+                    en=f"{ticker}: buy order failed — {e}",
+                )
+                return
+        order_id = result.get("id") if result else None
+        self.positions[ticker] = Position(
+            ticker=ticker,
+            quantity=qty,
+            buy_price=price,
+            stop_loss_pct=config.stop_loss_pct,
+            take_profit_pct=config.take_profit_pct,
+            t212_order_id=order_id,
+        )
+        self.trades.append(
+            Trade(ticker=ticker, side="BUY", quantity=qty, price=price, reason="signal")
+        )
+        self._log(
+            f"{ticker}: ALINDI {qty} adet @ ${price:.4f} (${qty * price:.2f}) | emir #{order_id}",
+            en=f"{ticker}: BOUGHT {qty} shares @ ${price:.4f} (${qty * price:.2f}) | order #{order_id}",
+        )
+        self.save_state()
 
     async def _sell(self, ticker: str, pos: Position, reason: str, price: float):
         if self.t212 is None:
@@ -465,7 +496,7 @@ class Bot:
             for ticker, pos in data.get("positions", {}).items():
                 self.positions[ticker] = Position(**pos)
 
-            for t in data.get("trades", []):
+            for t in data.get("trades", [])[-500:]:
                 self.trades.append(Trade(**t))
 
             today = date.today().isoformat()
