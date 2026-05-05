@@ -188,6 +188,16 @@
         <div class="card-header py-2">
           <span class="fw-semibold"><i class="bi bi-receipt me-1"></i><span data-i18n="trades.title">İşlem Geçmişi</span></span>
         </div>
+        <div class="px-3 py-2 d-flex gap-3 flex-wrap" style="background:#0d1117;border-bottom:1px solid var(--border)">
+          <span class="small text-secondary" data-i18n="trades.totalPnl">Toplam Gerçekleşen K/Z:</span>
+          <span class="small fw-bold" id="pnlTotal">—</span>
+          <span class="vr opacity-25"></span>
+          <span class="small text-secondary" data-i18n="trades.best">En İyi:</span>
+          <span class="small fw-bold" id="pnlBest">—</span>
+          <span class="vr opacity-25"></span>
+          <span class="small text-secondary" data-i18n="trades.worst">En Kötü:</span>
+          <span class="small fw-bold" id="pnlWorst">—</span>
+        </div>
         <div class="card-body p-0" style="max-height:360px;overflow-y:auto">
           <table class="table table-sm table-hover mb-0" id="tradesTable">
             <thead class="sticky-top" style="background:#161b22">
@@ -499,6 +509,7 @@ const LANG = {
     'trades.buy': 'ALIM', 'trades.sell': 'SATIŞ',
     'trades.signal': 'Sinyal', 'trades.stopLoss': 'Zar.Kes',
     'trades.takeProfit': 'Kâr Al', 'trades.manual': 'Manuel',
+    'trades.totalPnl': 'Toplam Gerçekleşen K/Z:', 'trades.best': 'En İyi:', 'trades.worst': 'En Kötü:',
     'modal.addTitle': 'Hisse Ekle', 'modal.cancel': 'İptal',
     'modal.add': 'Ekle', 'modal.save': 'Kaydet', 'modal.remove': 'Kaldır',
     'modal.ticker': 'Yahoo Finance Sembolü',
@@ -573,6 +584,7 @@ const LANG = {
     'trades.buy': 'BUY', 'trades.sell': 'SELL',
     'trades.signal': 'Signal', 'trades.stopLoss': 'Stop Loss',
     'trades.takeProfit': 'Take Profit', 'trades.manual': 'Manual',
+    'trades.totalPnl': 'Total Realized P&L:', 'trades.best': 'Best:', 'trades.worst': 'Worst:',
     'modal.addTitle': 'Add Stock', 'modal.cancel': 'Cancel',
     'modal.add': 'Add', 'modal.save': 'Save', 'modal.remove': 'Remove',
     'modal.ticker': 'Yahoo Finance Symbol',
@@ -878,6 +890,7 @@ function renderAll(state) {
   renderStocks(state.stocks);
   renderLogs(state.logs);
   renderTrades(state.trades);
+  renderPnlSummary(state.pnl_summary);
 }
 
 function renderNav(state) {
@@ -1181,6 +1194,24 @@ function renderTrades(trades) {
       <td>${tr.quantity}</td><td>$${tr.price.toFixed(4)}</td><td>${pnl}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="6" class="text-center text-secondary py-3">${t('trades.empty')}</td></tr>`;
+}
+
+// ─── PnL Summary ──────────────────────────────────────────────────────────────
+function renderPnlSummary(summary) {
+  if (!summary) return;
+  const fmt = (v) => `${v >= 0 ? '+' : ''}$${v.toFixed(2)}`;
+  const cls = (v) => v >= 0 ? 'text-success' : 'text-danger';
+
+  document.getElementById('pnlTotal').innerHTML =
+    `<span class="${cls(summary.total)}">${fmt(summary.total)}</span>`;
+
+  document.getElementById('pnlBest').innerHTML = summary.best
+    ? `<span class="text-success">${summary.best.ticker} ${fmt(summary.best.pnl)}</span>`
+    : '<span class="text-secondary">—</span>';
+
+  document.getElementById('pnlWorst').innerHTML = summary.worst
+    ? `<span class="${cls(summary.worst.pnl)}">${summary.worst.ticker} ${fmt(summary.worst.pnl)}</span>`
+    : '<span class="text-secondary">—</span>';
 }
 
 // ─── Bot kontrolü ─────────────────────────────────────────────────────────────

@@ -455,11 +455,24 @@ class Bot:
                 ),
             }
 
+        by_ticker: dict = {}
+        for trade in self.trades:
+            if trade.side == "SELL" and trade.pnl is not None:
+                by_ticker[trade.ticker] = round(by_ticker.get(trade.ticker, 0.0) + trade.pnl, 2)
+        best   = max(by_ticker.items(), key=lambda x: x[1]) if by_ticker else None
+        worst  = min(by_ticker.items(), key=lambda x: x[1]) if by_ticker else None
+
         return {
             "running": self.running,
             "stocks":  stocks_out,
             "trades":  [asdict(t) for t in self.trades[-100:]],
             "logs":    [asdict(e) for e in self.logs[-150:]],
+            "pnl_summary": {
+                "total":     round(sum(by_ticker.values()), 2),
+                "by_ticker": by_ticker,
+                "best":  {"ticker": best[0],  "pnl": best[1]}  if best  else None,
+                "worst": {"ticker": worst[0], "pnl": worst[1]} if worst else None,
+            },
         }
 
     # ---------- Persistence ----------
