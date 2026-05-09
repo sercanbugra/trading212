@@ -180,6 +180,10 @@
     <button class="btn btn-sm btn-outline-secondary" onclick="showReconnectOverlay()" title="T212 Ayarları">
       <i class="bi bi-key"></i>
     </button>
+    <!-- Çıkış -->
+    <button class="btn btn-sm btn-outline-danger" onclick="signOut()" title="Çıkış Yap / Sign Out">
+      <i class="bi bi-box-arrow-right"></i>
+    </button>
     <!-- Tema seçici -->
     <button id="btnTheme" class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="Tema">
       <i id="themeIcon" class="bi bi-moon-stars-fill"></i>
@@ -865,6 +869,14 @@ function showConnectStep(isFirstSetup = false) {
   document.getElementById('uiPwSection').style.display = isFirstSetup ? '' : 'none';
   applyTranslations();
   setTimeout(() => document.getElementById('t212KeyInput').focus(), 100);
+}
+
+function signOut() {
+  localStorage.removeItem('ui_password');
+  _uiPw = '';
+  if (_wsInstance) { _wsInstance.onclose = null; _wsInstance.close(); _wsInstance = null; }
+  document.getElementById('authOverlay').style.display = 'flex';
+  showLoginStep();
 }
 
 function showReconnectOverlay() {
