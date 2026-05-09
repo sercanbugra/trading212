@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="tr" data-bs-theme="dark">
+<html lang="tr" data-bs-theme="dark" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,42 +7,68 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
   <style>
-    :root { --bs-body-bg: #0d1117; --card-bg: #161b22; --border: #30363d; }
+    /* ── Dark theme (default) ────────────────────────────────────────── */
+    :root { --card-bg: #161b22; --border: #30363d; --bar-bg: #21262d; --log-bg: #010409;
+            --log-info: #c9d1d9; --log-time: #6e7681; --label-color: #6e7681;
+            --pos-bg: #0d2414; --pos-border: #238636; --no-pos-bg: #1c1c1c;
+            --overlay-bg: #0d1117; --thead-bg: #161b22; }
     body { background: #0d1117; font-size: 0.875rem; }
     .navbar { background: #161b22 !important; border-bottom: 1px solid var(--border); }
     .card { background: var(--card-bg); border: 1px solid var(--border); }
+
+    /* ── Sand theme ──────────────────────────────────────────────────── */
+    [data-theme="sand"] { --card-bg: #faf3e6; --border: #c9ad8a; --bar-bg: #d4c4aa;
+                          --log-bg: #ede0c8; --log-info: #3d2b1a; --log-time: #8a6a4a;
+                          --label-color: #8a6a4a; --pos-bg: #e0f0dd; --pos-border: #5aaa60;
+                          --no-pos-bg: #f5ede0; --overlay-bg: #f2e8d5; --thead-bg: #e8d8c0; }
+    [data-theme="sand"] body { background: #f2e8d5; color: #2c1f0e; }
+    [data-theme="sand"] .navbar { background: #c9a87a !important; border-bottom: 1px solid #b8956a; }
+    [data-theme="sand"] .card { background: var(--card-bg); border-color: var(--border); color: #2c1f0e; }
+    [data-theme="sand"] .text-secondary { color: #7a5c3e !important; }
+    [data-theme="sand"] .table { --bs-table-color: #2c1f0e; --bs-table-hover-bg: #ede0ca; --bs-table-striped-bg: #f0e5d5; }
+    [data-theme="sand"] .table td, [data-theme="sand"] .table th { border-color: #d4b896; }
+    [data-theme="sand"] .modal-content { background: #faf3e6; color: #2c1f0e; border-color: #c9ad8a; }
+    [data-theme="sand"] .modal-header, [data-theme="sand"] .modal-footer { border-color: #c9ad8a; }
+    [data-theme="sand"] .form-control, [data-theme="sand"] .form-select { background: #fdf8f0; color: #2c1f0e; border-color: #c9ad8a; }
+    [data-theme="sand"] .form-control:focus, [data-theme="sand"] .form-select:focus { background: #fff8ee; color: #2c1f0e; border-color: #a07840; box-shadow: 0 0 0 .2rem rgba(160,120,64,.25); }
+    [data-theme="sand"] .btn-outline-light { --bs-btn-color: #4a3020; --bs-btn-border-color: #b09070; --bs-btn-hover-bg: #e0cdb0; --bs-btn-hover-border-color: #b09070; }
+    [data-theme="sand"] .btn-close { filter: invert(0.6) sepia(1) saturate(0.5); }
+    [data-theme="sand"] .auth-overlay { background: #f2e8d5; }
+    [data-theme="sand"] .reconnectBanner { background: #f5e5b8; border-color: #c8a050; }
+
     .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
     .dot-running { background: #3fb950; box-shadow: 0 0 6px #3fb950; animation: pulse 1.5s infinite; }
     .dot-stopped { background: #f85149; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     .price-big { font-size: 1.8rem; font-weight: 700; letter-spacing: -0.5px; }
     .price-change { font-size: 1rem; font-weight: 600; }
-    .pct-bar-wrap { height: 6px; background: #21262d; border-radius: 3px; position: relative; overflow: visible; }
+    .pct-bar-wrap { height: 6px; background: var(--bar-bg); border-radius: 3px; position: relative; overflow: visible; }
     .pct-bar-fill { height: 100%; border-radius: 3px; transition: width .4s; }
     .pct-marker { position: absolute; top: -4px; width: 2px; height: 14px; background: white; border-radius: 1px; }
     .badge-signal { font-size: 0.7rem; }
     .log-box { height: 260px; overflow-y: auto; font-family: monospace; font-size: 0.78rem;
-               background: #010409; border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
-    .log-info    { color: #c9d1d9; }
+               background: var(--log-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
+    .log-info    { color: var(--log-info); }
     .log-warning { color: #d29922; }
     .log-error   { color: #f85149; }
-    .log-time    { color: #6e7681; margin-right: 6px; }
+    .log-time    { color: var(--log-time); margin-right: 6px; }
     .trade-row-buy  { border-left: 3px solid #3fb950; }
     .trade-row-sell { border-left: 3px solid #f85149; }
     .ticker-badge { font-size: 1rem; font-weight: 700; letter-spacing: 1px; }
-    .section-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: #6e7681; }
-    .pos-card   { background: #0d2414; border: 1px solid #238636; border-radius: 6px; }
-    .no-pos-card { background: #1c1c1c; border: 1px solid var(--border); border-radius: 6px; }
+    .section-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--label-color); }
+    .pos-card   { background: var(--pos-bg); border: 1px solid var(--pos-border); border-radius: 6px; }
+    .no-pos-card { background: var(--no-pos-bg); border: 1px solid var(--border); border-radius: 6px; }
     .lang-btn { font-size: 0.75rem; padding: 2px 8px; }
+    .trades-thead { background: var(--thead-bg) !important; }
     /* Auth overlay */
     .auth-overlay {
       position: fixed; inset: 0; z-index: 9999;
-      background: #0d1117;
+      background: var(--overlay-bg);
       display: flex; align-items: center; justify-content: center;
     }
     .auth-card { width: 100%; max-width: 440px; }
     .auth-error { color: #f85149; font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
-    .auth-hint  { font-size: 0.78rem; color: #6e7681; margin-top: 4px; }
+    .auth-hint  { font-size: 0.78rem; color: var(--log-time); margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -146,6 +172,10 @@
     <button class="btn btn-sm btn-outline-secondary" onclick="showReconnectOverlay()" title="T212 Ayarları">
       <i class="bi bi-key"></i>
     </button>
+    <!-- Tema seçici -->
+    <button id="btnTheme" class="btn btn-sm btn-outline-secondary" onclick="toggleTheme()" title="Tema">
+      <i id="themeIcon" class="bi bi-moon-stars-fill"></i>
+    </button>
     <!-- Dil seçici -->
     <div class="btn-group" role="group">
       <button id="btnTR" class="btn btn-sm btn-outline-light lang-btn active" onclick="setLang('tr')">TR</button>
@@ -200,18 +230,19 @@
         </div>
         <div class="card-body p-0" style="max-height:360px;overflow-y:auto">
           <table class="table table-sm table-hover mb-0" id="tradesTable">
-            <thead class="sticky-top" style="background:#161b22">
+            <thead class="sticky-top trades-thead">
               <tr>
                 <th data-i18n="trades.time">Zaman</th>
                 <th data-i18n="trades.stock">Hisse</th>
                 <th data-i18n="trades.action">İşlem</th>
                 <th data-i18n="trades.qty">Miktar</th>
-                <th data-i18n="trades.price">Fiyat</th>
+                <th data-i18n="trades.colBuy">Alış $</th>
+                <th data-i18n="trades.colSell">Satış $</th>
                 <th>P&amp;L</th>
               </tr>
             </thead>
             <tbody id="tradesBody">
-              <tr><td colspan="6" class="text-center text-secondary py-3" data-i18n="trades.empty">Henüz işlem yok</td></tr>
+              <tr><td colspan="7" class="text-center text-secondary py-3" data-i18n="trades.empty">Henüz işlem yok</td></tr>
             </tbody>
           </table>
         </div>
@@ -484,6 +515,17 @@
           </div>
         </div>
         <div id="formulaPreview"></div>
+        <!-- Templates -->
+        <div class="mt-3 pt-2 border-top">
+          <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+            <span class="fw-semibold" style="font-size:0.82rem" data-i18n="formula.templates">Şablonlar</span>
+            <input type="text" id="fTemplateName" class="form-control form-control-sm" style="max-width:190px" data-i18n="formula.templateName">
+            <button class="btn btn-sm btn-outline-success" onclick="saveFormulaTemplate()">
+              <i class="bi bi-floppy me-1"></i><span data-i18n="formula.saveTemplate">Kaydet</span>
+            </button>
+          </div>
+          <div id="formulaTemplateList" class="d-flex flex-wrap gap-2"></div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="modal.cancel">İptal</button>
@@ -505,6 +547,7 @@ const LANG = {
     'trades.title': 'İşlem Geçmişi', 'trades.time': 'Zaman',
     'trades.stock': 'Hisse', 'trades.action': 'İşlem',
     'trades.qty': 'Miktar', 'trades.price': 'Fiyat',
+    'trades.colBuy': 'Alış $', 'trades.colSell': 'Satış $',
     'trades.empty': 'Henüz işlem yok',
     'trades.buy': 'ALIM', 'trades.sell': 'SATIŞ',
     'trades.signal': 'Sinyal', 'trades.stopLoss': 'Zar.Kes',
@@ -560,6 +603,8 @@ const LANG = {
     'formula.xdaySell': 'X-Gün Satış% formülü',
     'formula.sentSell': 'Satış Haber Skoru formülü',
     'formula.sentBuy': 'Alış Haber Skoru formülü',
+    'formula.templates': 'Şablonlar', 'formula.templateName': 'Şablon adı...',
+    'formula.saveTemplate': 'Kaydet', 'formula.noTemplates': 'Henüz şablon yok',
     'modal.advanced': 'GELİŞMİŞ KOŞULLAR',
     'modal.xday': 'X-GÜN KOŞULU',
     'modal.xdayDays': 'Gün',
@@ -580,6 +625,7 @@ const LANG = {
     'trades.title': 'Trade History', 'trades.time': 'Time',
     'trades.stock': 'Stock', 'trades.action': 'Action',
     'trades.qty': 'Qty', 'trades.price': 'Price',
+    'trades.colBuy': 'Buy $', 'trades.colSell': 'Sell $',
     'trades.empty': 'No trades yet',
     'trades.buy': 'BUY', 'trades.sell': 'SELL',
     'trades.signal': 'Signal', 'trades.stopLoss': 'Stop Loss',
@@ -635,6 +681,8 @@ const LANG = {
     'formula.xdaySell': 'X-Day Sell% formula',
     'formula.sentSell': 'Sell News Score formula',
     'formula.sentBuy': 'Buy News Score formula',
+    'formula.templates': 'Templates', 'formula.templateName': 'Template name...',
+    'formula.saveTemplate': 'Save', 'formula.noTemplates': 'No saved templates',
     'modal.advanced': 'ADVANCED CONDITIONS',
     'modal.xday': 'X-DAY CONDITION',
     'modal.xdayDays': 'Days',
@@ -648,6 +696,26 @@ const LANG = {
     'card.sentLabel': 'NEWS SCORE',
   }
 };
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+const THEMES = ['dark', 'sand'];
+let currentTheme = localStorage.getItem('theme') || 'dark';
+
+function applyTheme(theme) {
+  const html = document.documentElement;
+  html.setAttribute('data-theme', theme);
+  html.setAttribute('data-bs-theme', theme === 'sand' ? 'light' : 'dark');
+  document.getElementById('themeIcon').className =
+    theme === 'sand' ? 'bi bi-brightness-high-fill' : 'bi bi-moon-stars-fill';
+}
+
+function toggleTheme() {
+  currentTheme = THEMES[(THEMES.indexOf(currentTheme) + 1) % THEMES.length];
+  localStorage.setItem('theme', currentTheme);
+  applyTheme(currentTheme);
+}
+
+applyTheme(currentTheme);
 
 let currentLang = localStorage.getItem('lang') || 'tr';
 
@@ -670,7 +738,9 @@ function applyTranslations() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     const val = t(key);
-    if (val) el.textContent = val;
+    if (!val) return;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = val;
+    else el.textContent = val;
   });
 }
 
@@ -1187,13 +1257,19 @@ function renderTrades(trades) {
       : '—';
     const [datePart, timePart] = tr.timestamp.split('T');
     const time = `${datePart} ${timePart?.substring(0, 8) || ''}`;
+    const buyCell  = tr.side === 'BUY'
+      ? `$${tr.price.toFixed(4)}`
+      : (tr.entry_price != null ? `$${tr.entry_price.toFixed(4)}` : '—');
+    const sellCell = tr.side === 'SELL'
+      ? `$${tr.price.toFixed(4)}`
+      : '—';
     return `<tr class="${cls}">
       <td class="text-secondary">${time}</td>
       <td><b>${tr.ticker}</b></td>
       <td>${side} <small class="text-secondary">(${reasonMap[tr.reason] || tr.reason})</small></td>
-      <td>${tr.quantity}</td><td>$${tr.price.toFixed(4)}</td><td>${pnl}</td>
+      <td>${tr.quantity}</td><td>${buyCell}</td><td>${sellCell}</td><td>${pnl}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="6" class="text-center text-secondary py-3">${t('trades.empty')}</td></tr>`;
+  }).join('') || `<tr><td colspan="7" class="text-center text-secondary py-3">${t('trades.empty')}</td></tr>`;
 }
 
 // ─── PnL Summary ──────────────────────────────────────────────────────────────
@@ -1398,6 +1474,70 @@ function evalFormula(formula, stock) {
   } catch(_) { return null; }
 }
 
+// ─── Formula Templates ────────────────────────────────────────────────────────
+const FORMULA_TPL_KEY = 'formula_templates';
+
+function _getTpls() {
+  try { return JSON.parse(localStorage.getItem(FORMULA_TPL_KEY) || '[]'); } catch { return []; }
+}
+
+function saveFormulaTemplate() {
+  const nameEl = document.getElementById('fTemplateName');
+  const name = nameEl.value.trim();
+  if (!name) { nameEl.focus(); return; }
+  const tpls = _getTpls().filter(t => t.name !== name);
+  tpls.push({ name, formulas: _getFormulas() });
+  localStorage.setItem(FORMULA_TPL_KEY, JSON.stringify(tpls));
+  nameEl.value = '';
+  renderFormulaTemplates();
+}
+
+function loadFormulaTemplate(idx) {
+  const tpl = _getTpls()[idx];
+  if (!tpl) return;
+  const F = tpl.formulas;
+  document.getElementById('fBuyDrop').value       = F.buy_drop_pct         || '';
+  document.getElementById('fStopLoss').value      = F.stop_loss_pct        || '';
+  document.getElementById('fTakeProfit').value    = F.take_profit_pct      || '';
+  document.getElementById('fMaxInv').value        = F.max_investment       || '';
+  document.getElementById('fTargetPrice').value   = F.target_price         || '';
+  document.getElementById('fXdayPeriod').value    = F.xday_period          || '';
+  document.getElementById('fXdayBuyDrop').value   = F.xday_buy_drop        || '';
+  document.getElementById('fXdaySellRise').value  = F.xday_sell_rise       || '';
+  document.getElementById('fSentimentSell').value = F.sentiment_sell_below || '';
+  document.getElementById('fSentimentBuy').value  = F.sentiment_buy_above  || '';
+  livePreview();
+}
+
+function deleteFormulaTemplate(idx) {
+  const tpls = _getTpls();
+  tpls.splice(idx, 1);
+  localStorage.setItem(FORMULA_TPL_KEY, JSON.stringify(tpls));
+  renderFormulaTemplates();
+}
+
+function renderFormulaTemplates() {
+  const tpls = _getTpls();
+  const el = document.getElementById('formulaTemplateList');
+  if (!tpls.length) {
+    el.innerHTML = `<span class="text-secondary" style="font-size:0.78rem">${t('formula.noTemplates')}</span>`;
+    return;
+  }
+  el.innerHTML = tpls.map((tpl, i) => `
+    <span class="badge rounded-pill bg-secondary d-inline-flex align-items-center gap-1 px-2 py-1 formula-tpl"
+          style="cursor:pointer;font-size:0.79rem;font-weight:500" data-idx="${i}">
+      <i class="bi bi-layout-text-sidebar-reverse" style="font-size:0.72rem"></i>
+      ${tpl.name.replace(/</g,'&lt;')}
+      <i class="bi bi-x-lg formula-tpl-del ms-1" style="font-size:0.6rem;opacity:0.7" data-idx="${i}"></i>
+    </span>`).join('');
+  el.querySelectorAll('.formula-tpl').forEach(span => {
+    span.addEventListener('click', () => loadFormulaTemplate(+span.dataset.idx));
+  });
+  el.querySelectorAll('.formula-tpl-del').forEach(icon => {
+    icon.addEventListener('click', e => { e.stopPropagation(); deleteFormulaTemplate(+icon.dataset.idx); });
+  });
+}
+
 document.getElementById('formulaModal').addEventListener('show.bs.modal', () => {
   if (!lastState) return;
   const list = document.getElementById('formulaStockList');
@@ -1417,6 +1557,7 @@ document.getElementById('formulaModal').addEventListener('show.bs.modal', () => 
     : `Variables: <code>price</code> (current price), <code>ref</code> (day open), <code>drop</code> (drop %) — Empty fields are unchanged`;
   applyTranslations();
   livePreview();
+  renderFormulaTemplates();
 });
 
 function toggleAllFormulaStocks(checked) {
@@ -1478,7 +1619,7 @@ function livePreview() {
   document.getElementById('formulaPreview').innerHTML = `
     <div class="table-responsive mt-1">
       <table class="table table-sm table-bordered mb-0" style="font-size:0.78rem">
-        <thead style="background:#161b22"><tr>${headers}</tr></thead>
+        <thead class="trades-thead"><tr>${headers}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;

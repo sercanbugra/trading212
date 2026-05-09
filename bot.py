@@ -68,6 +68,7 @@ class Trade:
     price: float
     reason: str
     pnl: Optional[float] = None
+    entry_price: Optional[float] = None
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
 
@@ -392,7 +393,7 @@ class Bot:
             pnl = round((price - pos.buy_price) * pos.quantity, 2)
             self.trades.append(
                 Trade(ticker=ticker, side="SELL", quantity=pos.quantity,
-                      price=price, reason=reason, pnl=pnl)
+                      price=price, reason=reason, pnl=pnl, entry_price=pos.buy_price)
             )
             del self.positions[ticker]
             reason_tr = _REASON_TR.get(reason, reason)
