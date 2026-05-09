@@ -14,7 +14,7 @@ from t212_client import Trading212Client, Trading212Error
 
 logger = logging.getLogger(__name__)
 
-INTERVAL_SECONDS = 15 * 60  # 15 dakika
+INTERVAL_SECONDS = 5 * 60  # 5 dakika
 
 
 @dataclass
