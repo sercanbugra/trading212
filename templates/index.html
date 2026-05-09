@@ -238,7 +238,11 @@
             <option value="BUY" data-i18n="trades.buy">ALIM</option>
             <option value="SELL" data-i18n="trades.sell">SATIŞ</option>
           </select>
-          <input type="date" id="tradeFilterDate" class="form-control form-control-sm" style="max-width:145px" onchange="renderTrades(lastState?.trades)" title="">
+          <div class="d-flex align-items-center gap-1">
+            <input type="date" id="tradeFilterDateFrom" class="form-control form-control-sm" style="max-width:145px" onchange="renderTrades(lastState?.trades)">
+            <span class="text-secondary">–</span>
+            <input type="date" id="tradeFilterDateTo" class="form-control form-control-sm" style="max-width:145px" onchange="renderTrades(lastState?.trades)">
+          </div>
           <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="clearTradeFilters()" title="Filtreleri temizle">&#x2715;</button>
         </div>
         <div class="card-body p-0" style="max-height:320px;overflow-y:auto">
@@ -1271,20 +1275,32 @@ function updateTradeFilterStocks(trades) {
 function clearTradeFilters() {
   document.getElementById('tradeFilterStock').value = '';
   document.getElementById('tradeFilterAction').value = '';
-  document.getElementById('tradeFilterDate').value = '';
+  document.getElementById('tradeFilterDateFrom').value = '';
+  document.getElementById('tradeFilterDateTo').value = '';
   renderTrades(lastState?.trades);
+}
+
+function computePnlFromTrades(trades) {
+  const sells = trades.filter(tr => tr.side === 'SELL' && tr.pnl != null);
+  if (!sells.length) return { total: 0, best: null, worst: null };
+  const total = Math.round(sells.reduce((s, tr) => s + tr.pnl, 0) * 100) / 100;
+  const best  = sells.reduce((a, b) => b.pnl > a.pnl ? b : a);
+  const worst = sells.reduce((a, b) => b.pnl < a.pnl ? b : a);
+  return { total, best: { ticker: best.ticker, pnl: best.pnl }, worst: { ticker: worst.ticker, pnl: worst.pnl } };
 }
 
 function renderTrades(trades) {
   const tbody = document.getElementById('tradesBody');
   if (!trades || trades.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" class="text-center text-secondary py-3">${t('trades.empty')}</td></tr>`;
+    renderPnlSummary(computePnlFromTrades([]));
     return;
   }
 
-  const fStock  = document.getElementById('tradeFilterStock')?.value  || '';
-  const fAction = document.getElementById('tradeFilterAction')?.value || '';
-  const fDate   = document.getElementById('tradeFilterDate')?.value   || '';
+  const fStock  = document.getElementById('tradeFilterStock')?.value    || '';
+  const fAction = document.getElementById('tradeFilterAction')?.value   || '';
+  const fFrom   = document.getElementById('tradeFilterDateFrom')?.value || '';
+  const fTo     = document.getElementById('tradeFilterDateTo')?.value   || '';
 
   const reasonMap = {
     signal: t('trades.signal'), stop_loss: t('trades.stopLoss'),
@@ -1294,9 +1310,13 @@ function renderTrades(trades) {
   const filtered = [...trades].reverse().filter(tr => {
     if (fStock  && tr.ticker !== fStock)  return false;
     if (fAction && tr.side   !== fAction) return false;
-    if (fDate   && !tr.timestamp.startsWith(fDate)) return false;
+    const d = tr.timestamp.substring(0, 10);
+    if (fFrom && d < fFrom) return false;
+    if (fTo   && d > fTo)   return false;
     return true;
   });
+
+  renderPnlSummary(computePnlFromTrades(filtered));
 
   tbody.innerHTML = filtered.map(tr => {
     const cls  = tr.side === 'BUY' ? 'trade-row-buy' : 'trade-row-sell';
