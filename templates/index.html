@@ -11,30 +11,38 @@
     :root { --card-bg: #161b22; --border: #30363d; --bar-bg: #21262d; --log-bg: #010409;
             --log-info: #c9d1d9; --log-time: #6e7681; --label-color: #6e7681;
             --pos-bg: #0d2414; --pos-border: #238636; --no-pos-bg: #1c1c1c;
-            --overlay-bg: #0d1117; --thead-bg: #161b22; }
+            --overlay-bg: #0d1117; --thead-bg: #161b22; --pnl-bar-bg: #0d1117;
+            --pct-marker: #ffffff; }
     body { background: #0d1117; font-size: 0.875rem; }
     .navbar { background: #161b22 !important; border-bottom: 1px solid var(--border); }
     .card { background: var(--card-bg); border: 1px solid var(--border); }
 
-    /* ── Sand theme ──────────────────────────────────────────────────── */
-    [data-theme="sand"] { --card-bg: #faf3e6; --border: #c9ad8a; --bar-bg: #d4c4aa;
-                          --log-bg: #ede0c8; --log-info: #3d2b1a; --log-time: #8a6a4a;
-                          --label-color: #8a6a4a; --pos-bg: #e0f0dd; --pos-border: #5aaa60;
-                          --no-pos-bg: #f5ede0; --overlay-bg: #f2e8d5; --thead-bg: #e8d8c0; }
-    [data-theme="sand"] body { background: #f2e8d5; color: #2c1f0e; }
-    [data-theme="sand"] .navbar { background: #c9a87a !important; border-bottom: 1px solid #b8956a; }
-    [data-theme="sand"] .card { background: var(--card-bg); border-color: var(--border); color: #2c1f0e; }
-    [data-theme="sand"] .text-secondary { color: #7a5c3e !important; }
-    [data-theme="sand"] .table { --bs-table-color: #2c1f0e; --bs-table-hover-bg: #ede0ca; --bs-table-striped-bg: #f0e5d5; }
-    [data-theme="sand"] .table td, [data-theme="sand"] .table th { border-color: #d4b896; }
-    [data-theme="sand"] .modal-content { background: #faf3e6; color: #2c1f0e; border-color: #c9ad8a; }
-    [data-theme="sand"] .modal-header, [data-theme="sand"] .modal-footer { border-color: #c9ad8a; }
-    [data-theme="sand"] .form-control, [data-theme="sand"] .form-select { background: #fdf8f0; color: #2c1f0e; border-color: #c9ad8a; }
-    [data-theme="sand"] .form-control:focus, [data-theme="sand"] .form-select:focus { background: #fff8ee; color: #2c1f0e; border-color: #a07840; box-shadow: 0 0 0 .2rem rgba(160,120,64,.25); }
-    [data-theme="sand"] .btn-outline-light { --bs-btn-color: #4a3020; --bs-btn-border-color: #b09070; --bs-btn-hover-bg: #e0cdb0; --bs-btn-hover-border-color: #b09070; }
-    [data-theme="sand"] .btn-close { filter: invert(0.6) sepia(1) saturate(0.5); }
-    [data-theme="sand"] .auth-overlay { background: #f2e8d5; }
-    [data-theme="sand"] .reconnectBanner { background: #f5e5b8; border-color: #c8a050; }
+    /* ── Frost theme ──────────────────────────────────────────────────── */
+    [data-theme="frost"] { --card-bg: #ffffff; --border: #cdd8e8; --bar-bg: #dce6f0;
+                           --log-bg: #f4f8fc; --log-info: #1e3050; --log-time: #7a96b4;
+                           --label-color: #6e8caa; --pos-bg: #eaf6ee; --pos-border: #28a745;
+                           --no-pos-bg: #f4f8fc; --overlay-bg: #eef3f9; --thead-bg: #eaf0f8;
+                           --pnl-bar-bg: #eaf0f8; --pct-marker: #3a5a80; }
+    [data-theme="frost"] body { background: #eef3f9; color: #1e3050; }
+    [data-theme="frost"] .navbar { background: #1a2f52 !important; border-bottom: 1px solid #243d6a; }
+    [data-theme="frost"] .card { background: var(--card-bg); border-color: var(--border); color: #1e3050; box-shadow: 0 1px 6px rgba(30,48,80,.08); }
+    [data-theme="frost"] .card-header { background: #f4f8fc; border-bottom-color: var(--border); }
+    [data-theme="frost"] .text-secondary { color: #4e6e90 !important; }
+    [data-theme="frost"] .table { --bs-table-color: #1e3050; --bs-table-hover-bg: #eaf0f8; --bs-table-border-color: #cdd8e8; }
+    [data-theme="frost"] .table td, [data-theme="frost"] .table th { border-color: #cdd8e8; }
+    [data-theme="frost"] .modal-content { background: #ffffff; color: #1e3050; border-color: #cdd8e8; }
+    [data-theme="frost"] .modal-header, [data-theme="frost"] .modal-footer { background: #f4f8fc; border-color: #cdd8e8; }
+    [data-theme="frost"] .form-control, [data-theme="frost"] .form-select { background: #ffffff; color: #1e3050; border-color: #b8c8dc; }
+    [data-theme="frost"] .form-control:focus, [data-theme="frost"] .form-select:focus { background: #ffffff; color: #1e3050; border-color: #3a7bd4; box-shadow: 0 0 0 .2rem rgba(58,123,212,.2); }
+    [data-theme="frost"] .form-control::placeholder { color: #8aaac8; }
+    [data-theme="frost"] .btn-outline-secondary { --bs-btn-color: #3a5a80; --bs-btn-border-color: #90a8c4; --bs-btn-hover-bg: #dce6f0; --bs-btn-hover-border-color: #3a5a80; --bs-btn-hover-color: #1e3050; }
+    [data-theme="frost"] .btn-outline-warning { --bs-btn-color: #b06800; --bs-btn-border-color: #e8a030; --bs-btn-hover-bg: #fef0d0; --bs-btn-hover-color: #7a4800; }
+    [data-theme="frost"] .btn-outline-primary { --bs-btn-color: #1a5fb4; --bs-btn-border-color: #4a8fd4; --bs-btn-hover-bg: #ddeeff; --bs-btn-hover-color: #1a5fb4; }
+    [data-theme="frost"] .btn-outline-success { --bs-btn-color: #1a7a3a; --bs-btn-border-color: #3aaa5a; --bs-btn-hover-bg: #d4f0dc; --bs-btn-hover-color: #1a7a3a; }
+    [data-theme="frost"] .btn-close { filter: invert(0.5) sepia(0.3) saturate(0.8); }
+    [data-theme="frost"] .badge.bg-secondary { background-color: #4e6e90 !important; }
+    [data-theme="frost"] .alert-secondary { background: #eaf0f8; border-color: #cdd8e8; color: #1e3050; }
+    [data-theme="frost"] .alert-warning { background: #fff8e6; border-color: #f0d060; color: #7a4800; }
 
     .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
     .dot-running { background: #3fb950; box-shadow: 0 0 6px #3fb950; animation: pulse 1.5s infinite; }
@@ -44,7 +52,7 @@
     .price-change { font-size: 1rem; font-weight: 600; }
     .pct-bar-wrap { height: 6px; background: var(--bar-bg); border-radius: 3px; position: relative; overflow: visible; }
     .pct-bar-fill { height: 100%; border-radius: 3px; transition: width .4s; }
-    .pct-marker { position: absolute; top: -4px; width: 2px; height: 14px; background: white; border-radius: 1px; }
+    .pct-marker { position: absolute; top: -4px; width: 2px; height: 14px; background: var(--pct-marker); border-radius: 1px; }
     .badge-signal { font-size: 0.7rem; }
     .log-box { height: 260px; overflow-y: auto; font-family: monospace; font-size: 0.78rem;
                background: var(--log-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
@@ -218,7 +226,7 @@
         <div class="card-header py-2">
           <span class="fw-semibold"><i class="bi bi-receipt me-1"></i><span data-i18n="trades.title">İşlem Geçmişi</span></span>
         </div>
-        <div class="px-3 py-2 d-flex gap-3 flex-wrap" style="background:#0d1117;border-bottom:1px solid var(--border)">
+        <div class="px-3 py-2 d-flex gap-3 flex-wrap" style="background:var(--pnl-bar-bg);border-bottom:1px solid var(--border)">
           <span class="small text-secondary" data-i18n="trades.totalPnl">Toplam Gerçekleşen K/Z:</span>
           <span class="small fw-bold" id="pnlTotal">—</span>
           <span class="vr opacity-25"></span>
@@ -720,15 +728,16 @@ const LANG = {
 };
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
-const THEMES = ['dark', 'sand'];
+const THEMES = ['dark', 'frost'];
 let currentTheme = localStorage.getItem('theme') || 'dark';
+if (!THEMES.includes(currentTheme)) currentTheme = 'dark'; // migrate old theme names
 
 function applyTheme(theme) {
   const html = document.documentElement;
   html.setAttribute('data-theme', theme);
-  html.setAttribute('data-bs-theme', theme === 'sand' ? 'light' : 'dark');
+  html.setAttribute('data-bs-theme', theme === 'frost' ? 'light' : 'dark');
   document.getElementById('themeIcon').className =
-    theme === 'sand' ? 'bi bi-brightness-high-fill' : 'bi bi-moon-stars-fill';
+    theme === 'frost' ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
 }
 
 function toggleTheme() {
