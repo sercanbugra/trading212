@@ -228,11 +228,25 @@
           <span class="small text-secondary" data-i18n="trades.worst">En Kötü:</span>
           <span class="small fw-bold" id="pnlWorst">—</span>
         </div>
-        <div class="card-body p-0" style="max-height:360px;overflow-y:auto">
+        <!-- Filter bar -->
+        <div class="px-2 py-2 d-flex gap-2 flex-wrap align-items-center" style="border-bottom:1px solid var(--border)">
+          <select id="tradeFilterStock" class="form-select form-select-sm" style="max-width:110px" onchange="renderTrades(lastState?.trades)">
+            <option value="" data-i18n="trades.allStocks">Tümü</option>
+          </select>
+          <select id="tradeFilterAction" class="form-select form-select-sm" style="max-width:105px" onchange="renderTrades(lastState?.trades)">
+            <option value="" data-i18n="trades.allActions">Tüm İşlemler</option>
+            <option value="BUY" data-i18n="trades.buy">ALIM</option>
+            <option value="SELL" data-i18n="trades.sell">SATIŞ</option>
+          </select>
+          <input type="date" id="tradeFilterDate" class="form-control form-control-sm" style="max-width:145px" onchange="renderTrades(lastState?.trades)" title="">
+          <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="clearTradeFilters()" title="Filtreleri temizle">&#x2715;</button>
+        </div>
+        <div class="card-body p-0" style="max-height:320px;overflow-y:auto">
           <table class="table table-sm table-hover mb-0" id="tradesTable">
             <thead class="sticky-top trades-thead">
               <tr>
-                <th data-i18n="trades.time">Zaman</th>
+                <th data-i18n="trades.date">Tarih</th>
+                <th data-i18n="trades.hour">Saat</th>
                 <th data-i18n="trades.stock">Hisse</th>
                 <th data-i18n="trades.action">İşlem</th>
                 <th data-i18n="trades.qty">Miktar</th>
@@ -242,7 +256,7 @@
               </tr>
             </thead>
             <tbody id="tradesBody">
-              <tr><td colspan="7" class="text-center text-secondary py-3" data-i18n="trades.empty">Henüz işlem yok</td></tr>
+              <tr><td colspan="8" class="text-center text-secondary py-3" data-i18n="trades.empty">Henüz işlem yok</td></tr>
             </tbody>
           </table>
         </div>
@@ -548,6 +562,8 @@ const LANG = {
     'trades.stock': 'Hisse', 'trades.action': 'İşlem',
     'trades.qty': 'Miktar', 'trades.price': 'Fiyat',
     'trades.colBuy': 'Alış $', 'trades.colSell': 'Satış $',
+    'trades.date': 'Tarih', 'trades.hour': 'Saat',
+    'trades.allStocks': 'Tüm Hisseler', 'trades.allActions': 'Tüm İşlemler',
     'trades.empty': 'Henüz işlem yok',
     'trades.buy': 'ALIM', 'trades.sell': 'SATIŞ',
     'trades.signal': 'Sinyal', 'trades.stopLoss': 'Zar.Kes',
@@ -626,6 +642,8 @@ const LANG = {
     'trades.stock': 'Stock', 'trades.action': 'Action',
     'trades.qty': 'Qty', 'trades.price': 'Price',
     'trades.colBuy': 'Buy $', 'trades.colSell': 'Sell $',
+    'trades.date': 'Date', 'trades.hour': 'Hour',
+    'trades.allStocks': 'All Stocks', 'trades.allActions': 'All Actions',
     'trades.empty': 'No trades yet',
     'trades.buy': 'BUY', 'trades.sell': 'SELL',
     'trades.signal': 'Signal', 'trades.stopLoss': 'Stop Loss',
@@ -959,6 +977,7 @@ function renderAll(state) {
   renderNav(state);
   renderStocks(state.stocks);
   renderLogs(state.logs);
+  updateTradeFilterStocks(state.trades);
   renderTrades(state.trades);
   renderPnlSummary(state.pnl_summary);
 }
@@ -1240,14 +1259,46 @@ function refreshLogLanguage() {
 function clearLogs() { document.getElementById('logBox').innerHTML = ''; displayedLogCount = 0; }
 
 // ─── Trades ───────────────────────────────────────────────────────────────────
+function updateTradeFilterStocks(trades) {
+  const sel = document.getElementById('tradeFilterStock');
+  if (!sel) return;
+  const current = sel.value;
+  const tickers = [...new Set((trades || []).map(tr => tr.ticker))].sort();
+  sel.innerHTML = `<option value="">${t('trades.allStocks')}</option>` +
+    tickers.map(tk => `<option value="${tk}"${tk === current ? ' selected' : ''}>${tk}</option>`).join('');
+}
+
+function clearTradeFilters() {
+  document.getElementById('tradeFilterStock').value = '';
+  document.getElementById('tradeFilterAction').value = '';
+  document.getElementById('tradeFilterDate').value = '';
+  renderTrades(lastState?.trades);
+}
+
 function renderTrades(trades) {
   const tbody = document.getElementById('tradesBody');
-  if (!trades || trades.length === 0) return;
+  if (!trades || trades.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-secondary py-3">${t('trades.empty')}</td></tr>`;
+    return;
+  }
+
+  const fStock  = document.getElementById('tradeFilterStock')?.value  || '';
+  const fAction = document.getElementById('tradeFilterAction')?.value || '';
+  const fDate   = document.getElementById('tradeFilterDate')?.value   || '';
+
   const reasonMap = {
     signal: t('trades.signal'), stop_loss: t('trades.stopLoss'),
     take_profit: t('trades.takeProfit'), manual: t('trades.manual'),
   };
-  tbody.innerHTML = [...trades].reverse().map(tr => {
+
+  const filtered = [...trades].reverse().filter(tr => {
+    if (fStock  && tr.ticker !== fStock)  return false;
+    if (fAction && tr.side   !== fAction) return false;
+    if (fDate   && !tr.timestamp.startsWith(fDate)) return false;
+    return true;
+  });
+
+  tbody.innerHTML = filtered.map(tr => {
     const cls  = tr.side === 'BUY' ? 'trade-row-buy' : 'trade-row-sell';
     const side = tr.side === 'BUY'
       ? `<span class="text-success">${t('trades.buy')}</span>`
@@ -1256,20 +1307,18 @@ function renderTrades(trades) {
       ? `<span class="${tr.pnl >= 0 ? 'text-success' : 'text-danger'}">${tr.pnl >= 0 ? '+' : ''}$${tr.pnl.toFixed(2)}</span>`
       : '—';
     const [datePart, timePart] = tr.timestamp.split('T');
-    const time = `${datePart} ${timePart?.substring(0, 8) || ''}`;
     const buyCell  = tr.side === 'BUY'
       ? `$${tr.price.toFixed(4)}`
       : (tr.entry_price != null ? `$${tr.entry_price.toFixed(4)}` : '—');
-    const sellCell = tr.side === 'SELL'
-      ? `$${tr.price.toFixed(4)}`
-      : '—';
+    const sellCell = tr.side === 'SELL' ? `$${tr.price.toFixed(4)}` : '—';
     return `<tr class="${cls}">
-      <td class="text-secondary">${time}</td>
+      <td class="text-secondary" style="white-space:nowrap">${datePart}</td>
+      <td class="text-secondary" style="white-space:nowrap">${timePart?.substring(0, 8) || ''}</td>
       <td><b>${tr.ticker}</b></td>
       <td>${side} <small class="text-secondary">(${reasonMap[tr.reason] || tr.reason})</small></td>
       <td>${tr.quantity}</td><td>${buyCell}</td><td>${sellCell}</td><td>${pnl}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="7" class="text-center text-secondary py-3">${t('trades.empty')}</td></tr>`;
+  }).join('') || `<tr><td colspan="8" class="text-center text-secondary py-3">${t('trades.empty')}</td></tr>`;
 }
 
 // ─── PnL Summary ──────────────────────────────────────────────────────────────
