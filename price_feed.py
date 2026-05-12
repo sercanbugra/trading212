@@ -261,9 +261,11 @@ async def _fh_news(ticker: str) -> List[str]:
         return []
     try:
         now = datetime.now()
+        cutoff = now - timedelta(days=2)
+        cutoff_ts = cutoff.timestamp()
         params = {
             "symbol": ticker,
-            "from": (now - timedelta(days=3)).strftime("%Y-%m-%d"),
+            "from": cutoff.strftime("%Y-%m-%d"),
             "to": now.strftime("%Y-%m-%d"),
             "token": _fh_key,
         }
@@ -272,7 +274,8 @@ async def _fh_news(ticker: str) -> List[str]:
                              timeout=aiohttp.ClientTimeout(total=8)) as r:
                 items = await r.json()
                 return [(i.get("headline", "") + " " + i.get("summary", "")).strip()
-                        for i in (items or [])[:20]]
+                        for i in (items or [])[:20]
+                        if i.get("datetime", 0) >= cutoff_ts]
     except Exception as e:
         logger.warning(f"[FH news/{ticker}] {e}")
     return []
@@ -281,8 +284,17 @@ async def _fh_news(ticker: str) -> List[str]:
 def _yf_news_sync(ticker: str) -> List[str]:
     try:
         import yfinance as yf
+        import time as _t
+        cutoff_ts = _t.time() - 2 * 86400
         news = yf.Ticker(ticker).news or []
-        return [(n.get("content", {}).get("title", "") or n.get("title", "")).strip() for n in news[:20]]
+        result = []
+        for n in news[:20]:
+            if n.get("providerPublishTime", 0) < cutoff_ts:
+                continue
+            title = (n.get("content", {}).get("title", "") or n.get("title", "")).strip()
+            if title:
+                result.append(title)
+        return result
     except Exception as e:
         logger.warning(f"[YF news/{ticker}] {e}")
     return []
@@ -371,6 +383,5 @@ class PriceFeed:
             loop = asyncio.get_event_loop()
             texts = await loop.run_in_executor(_executor, _yf_news_sync, ticker)
         score = _vader_score(texts)
-        if score is not None:
-            _sentiment_cache[ticker] = (score, _time.time())
+        _sentiment_cache[ticker] = (score, _time.time())
         return score

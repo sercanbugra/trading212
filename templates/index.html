@@ -54,7 +54,8 @@
     .pct-bar-fill { height: 100%; border-radius: 3px; transition: width .4s; }
     .pct-marker { position: absolute; top: -4px; width: 2px; height: 14px; background: var(--pct-marker); border-radius: 1px; }
     .badge-signal { font-size: 0.7rem; }
-    .log-box { height: 260px; overflow-y: auto; font-family: monospace; font-size: 0.78rem;
+    .log-box { height: 260px; min-height: 80px; overflow-y: auto; resize: vertical;
+               font-family: monospace; font-size: 0.78rem;
                background: var(--log-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; }
     .log-info    { color: var(--log-info); }
     .log-warning { color: #d29922; }
@@ -176,6 +177,9 @@
     <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#formulaModal" title="Toplu Formül">
       <i class="bi bi-calculator"></i>
     </button>
+    <button class="btn btn-sm btn-outline-info" onclick="openInfoGraph()" title="Info Graph">
+      <i class="bi bi-graph-up-arrow me-1"></i><span data-i18n="nav.infoGraph">Rapor</span>
+    </button>
     <!-- Ayarlar -->
     <button class="btn btn-sm btn-outline-secondary" onclick="showReconnectOverlay()" title="T212 Ayarları">
       <i class="bi bi-key"></i>
@@ -239,6 +243,9 @@
           <span class="vr opacity-25"></span>
           <span class="small text-secondary" data-i18n="trades.worst">En Kötü:</span>
           <span class="small fw-bold" id="pnlWorst">—</span>
+          <span class="vr opacity-25"></span>
+          <span class="small text-secondary" data-i18n="trades.spent">Harcanan:</span>
+          <span class="small fw-bold text-info" id="pnlSpent">—</span>
         </div>
         <!-- Filter bar -->
         <div class="px-2 py-2 d-flex gap-2 flex-wrap align-items-center" style="border-bottom:1px solid var(--border)">
@@ -257,7 +264,7 @@
           </div>
           <button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="clearTradeFilters()" title="Filtreleri temizle">&#x2715;</button>
         </div>
-        <div class="card-body p-0" style="max-height:320px;overflow-y:auto">
+        <div class="card-body p-0" style="height:320px;min-height:100px;overflow-y:auto;resize:vertical">
           <table class="table table-sm table-hover mb-0" id="tradesTable">
             <thead class="sticky-top trades-thead">
               <tr>
@@ -389,6 +396,7 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="editTicker" />
+        <div id="editRulesetSummary" class="alert alert-secondary py-2 mb-3" style="font-size:0.79rem"></div>
         <div class="mb-3">
           <label class="form-label" data-i18n="modal.t212ticker">Trading212 Sembolü</label>
           <div class="input-group">
@@ -565,7 +573,114 @@
   </div>
 </div>
 
+<!-- ── INFO GRAPH MODAL ───────────────────────────────────────────── -->
+<div class="modal fade" id="infoGraphModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title d-flex align-items-center gap-2">
+          <i class="bi bi-graph-up-arrow text-info"></i>
+          <span data-i18n="ig.title">Portföy Raporu</span>
+        </h5>
+        <small class="text-secondary ms-3" id="ig-timestamp"></small>
+        <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-3">
+
+        <!-- No data -->
+        <div id="ig-nodata" class="text-center text-secondary py-5" style="display:none">
+          <i class="bi bi-bar-chart fs-2"></i>
+          <div class="mt-2" data-i18n="ig.noData">Henüz işlem verisi yok</div>
+        </div>
+
+        <div id="ig-content" style="display:none">
+
+          <!-- KPI row -->
+          <div class="row row-cols-2 row-cols-sm-3 row-cols-xl-6 g-2 mb-3" id="ig-kpi-row"></div>
+
+          <!-- Summary paragraph -->
+          <div id="ig-summary" class="alert alert-secondary py-2 px-3 mb-3" style="font-size:0.8rem;line-height:1.6"></div>
+
+          <!-- Row 1: Win/Loss donut + P&L by ticker horizontal bar -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <div class="card h-100">
+                <div class="card-header py-1 px-3">
+                  <span class="section-label" data-i18n="ig.winLoss">KAZANÇ / KAYIP</span>
+                </div>
+                <div class="card-body p-2 d-flex align-items-center">
+                  <div style="position:relative;width:100%;height:200px"><canvas id="ig-c-winloss"></canvas></div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <div class="card h-100">
+                <div class="card-header py-1 px-3">
+                  <span class="section-label" data-i18n="ig.pnlByTicker">HİSSE BAZINDA GERÇEKLEŞMİŞ K/Z</span>
+                </div>
+                <div class="card-body p-2">
+                  <div style="position:relative;height:200px"><canvas id="ig-c-pnl-ticker"></canvas></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2: Exit reasons donut + Monthly P&L bar -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-4">
+              <div class="card h-100">
+                <div class="card-header py-1 px-3">
+                  <span class="section-label" data-i18n="ig.exitReasons">ÇIKIŞ NEDENLERİ</span>
+                </div>
+                <div class="card-body p-2 d-flex align-items-center">
+                  <div style="position:relative;width:100%;height:200px"><canvas id="ig-c-reasons"></canvas></div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-8">
+              <div class="card h-100">
+                <div class="card-header py-1 px-3">
+                  <span class="section-label" data-i18n="ig.monthlyPnl">ZAMANSAL K/Z</span>
+                </div>
+                <div class="card-body p-2">
+                  <div style="position:relative;height:200px"><canvas id="ig-c-monthly"></canvas></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 3: Capital pie + Trade count grouped bar -->
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="card">
+                <div class="card-header py-1 px-3">
+                  <span class="section-label" data-i18n="ig.volume">HİSSE BAZINDA YATIRILAN SERMAYE</span>
+                </div>
+                <div class="card-body p-2">
+                  <div style="position:relative;height:220px"><canvas id="ig-c-volume"></canvas></div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card">
+                <div class="card-header py-1 px-3">
+                  <span class="section-label" data-i18n="ig.tradeCount">İŞLEM SAYILARI</span>
+                </div>
+                <div class="card-body p-2">
+                  <div style="position:relative;height:220px"><canvas id="ig-c-tradecount"></canvas></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /ig-content -->
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
 // ─── i18n ─────────────────────────────────────────────────────────────────
 const LANG = {
@@ -584,7 +699,7 @@ const LANG = {
     'trades.buy': 'ALIM', 'trades.sell': 'SATIŞ',
     'trades.signal': 'Sinyal', 'trades.stopLoss': 'Zar.Kes',
     'trades.takeProfit': 'Kâr Al', 'trades.manual': 'Manuel',
-    'trades.totalPnl': 'Toplam Gerçekleşen K/Z:', 'trades.best': 'En İyi:', 'trades.worst': 'En Kötü:',
+    'trades.totalPnl': 'Toplam Gerçekleşen K/Z:', 'trades.best': 'En İyi:', 'trades.worst': 'En Kötü:', 'trades.spent': 'Harcanan:',
     'modal.addTitle': 'Hisse Ekle', 'modal.cancel': 'İptal',
     'modal.add': 'Ekle', 'modal.save': 'Kaydet', 'modal.remove': 'Kaldır',
     'modal.ticker': 'Yahoo Finance Sembolü',
@@ -648,6 +763,11 @@ const LANG = {
     'modal.targetPrice': 'Hedef Fiyat ($)',
     'modal.targetHint': 'Fiyat bu değere düşünce alım — girilirse Alım Düşüşü% devre dışı kalır',
     'card.sentLabel': 'HABER SKORU',
+    'nav.infoGraph': 'Rapor',
+    'ig.title': 'Portföy Raporu', 'ig.noData': 'Henüz işlem verisi yok',
+    'ig.winLoss': 'KAZANÇ / KAYIP', 'ig.pnlByTicker': 'HİSSE BAZINDA GERÇEKLEŞMİŞ K/Z',
+    'ig.exitReasons': 'ÇIKIŞ NEDENLERİ', 'ig.monthlyPnl': 'ZAMANSAL K/Z',
+    'ig.volume': 'HİSSE BAZINDA YATIRILAN SERMAYE', 'ig.tradeCount': 'İŞLEM SAYILARI',
   },
   en: {
     'nav.running': 'Running', 'nav.stopped': 'Stopped',
@@ -664,7 +784,7 @@ const LANG = {
     'trades.buy': 'BUY', 'trades.sell': 'SELL',
     'trades.signal': 'Signal', 'trades.stopLoss': 'Stop Loss',
     'trades.takeProfit': 'Take Profit', 'trades.manual': 'Manual',
-    'trades.totalPnl': 'Total Realized P&L:', 'trades.best': 'Best:', 'trades.worst': 'Worst:',
+    'trades.totalPnl': 'Total Realized P&L:', 'trades.best': 'Best:', 'trades.worst': 'Worst:', 'trades.spent': 'Spent:',
     'modal.addTitle': 'Add Stock', 'modal.cancel': 'Cancel',
     'modal.add': 'Add', 'modal.save': 'Save', 'modal.remove': 'Remove',
     'modal.ticker': 'Yahoo Finance Symbol',
@@ -728,6 +848,11 @@ const LANG = {
     'modal.targetPrice': 'Target Price ($)',
     'modal.targetHint': 'Buy when price drops to this level — disables Buy Drop% when set',
     'card.sentLabel': 'NEWS SCORE',
+    'nav.infoGraph': 'Report',
+    'ig.title': 'Portfolio Report', 'ig.noData': 'No trade data yet',
+    'ig.winLoss': 'WIN / LOSS', 'ig.pnlByTicker': 'REALIZED P&L BY TICKER',
+    'ig.exitReasons': 'EXIT REASONS', 'ig.monthlyPnl': 'P&L OVER TIME',
+    'ig.volume': 'CAPITAL BY TICKER', 'ig.tradeCount': 'TRADE COUNT',
   }
 };
 
@@ -1302,11 +1427,13 @@ function clearTradeFilters() {
 
 function computePnlFromTrades(trades) {
   const sells = trades.filter(tr => tr.side === 'SELL' && tr.pnl != null);
-  if (!sells.length) return { total: 0, best: null, worst: null };
+  const buys  = trades.filter(tr => tr.side === 'BUY');
+  const spent = Math.round(buys.reduce((s, tr) => s + (tr.price * tr.quantity), 0) * 100) / 100;
+  if (!sells.length) return { total: 0, best: null, worst: null, spent };
   const total = Math.round(sells.reduce((s, tr) => s + tr.pnl, 0) * 100) / 100;
   const best  = sells.reduce((a, b) => b.pnl > a.pnl ? b : a);
   const worst = sells.reduce((a, b) => b.pnl < a.pnl ? b : a);
-  return { total, best: { ticker: best.ticker, pnl: best.pnl }, worst: { ticker: worst.ticker, pnl: worst.pnl } };
+  return { total, best: { ticker: best.ticker, pnl: best.pnl }, worst: { ticker: worst.ticker, pnl: worst.pnl }, spent };
 }
 
 function renderTrades(trades) {
@@ -1377,6 +1504,9 @@ function renderPnlSummary(summary) {
   document.getElementById('pnlWorst').innerHTML = summary.worst
     ? `<span class="${cls(summary.worst.pnl)}">${summary.worst.ticker} ${fmt(summary.worst.pnl)}</span>`
     : '<span class="text-secondary">—</span>';
+
+  const spentEl = document.getElementById('pnlSpent');
+  if (spentEl) spentEl.textContent = summary.spent > 0 ? `$${summary.spent.toFixed(2)}` : '—';
 }
 
 // ─── Bot kontrolü ─────────────────────────────────────────────────────────────
@@ -1452,6 +1582,22 @@ function openEdit(ticker) {
   document.getElementById('editSentimentBuy').value      = s.sentiment_buy_above || 0;
   document.getElementById('editTargetPrice').value       = s.target_price || 0;
   toggleTargetPriceMode('edit');
+
+  const summaryParts = [
+    `<span class="me-2"><i class="bi bi-arrow-down text-danger me-1"></i>${currentLang === 'tr' ? 'Alım' : 'Buy'}: <b>-${s.buy_drop_pct}%</b></span>`,
+    `<span class="me-2"><i class="bi bi-shield text-warning me-1"></i>${currentLang === 'tr' ? 'ZK' : 'SL'}: <b>-${s.stop_loss_pct}%</b></span>`,
+    `<span class="me-2"><i class="bi bi-arrow-up text-success me-1"></i>${currentLang === 'tr' ? 'KA' : 'TP'}: <b>+${s.take_profit_pct}%</b></span>`,
+    `<span class="me-2"><i class="bi bi-cash text-info me-1"></i>${currentLang === 'tr' ? 'Maks' : 'Max'}: <b>$${s.max_investment}</b></span>`,
+  ];
+  if (s.target_price > 0)
+    summaryParts.push(`<span class="me-2"><i class="bi bi-bullseye me-1"></i>${currentLang === 'tr' ? 'Hedef' : 'Target'}: <b>$${s.target_price}</b></span>`);
+  if (s.xday_period > 0)
+    summaryParts.push(`<span class="me-2"><i class="bi bi-calendar-range me-1"></i>${s.xday_period}${currentLang === 'tr' ? 'G' : 'd'}: <b>-${s.xday_buy_drop}% / +${s.xday_sell_rise}%</b></span>`);
+  if (s.sentiment_sell_below < 0 || s.sentiment_buy_above > 0)
+    summaryParts.push(`<span class="me-2"><i class="bi bi-newspaper me-1"></i>${currentLang === 'tr' ? 'Haber' : 'Sent'}: <b>${s.sentiment_sell_below} / ${s.sentiment_buy_above}</b></span>`);
+  document.getElementById('editRulesetSummary').innerHTML =
+    `<div class="d-flex flex-wrap gap-1 align-items-center">${summaryParts.join('')}</div>`;
+
   // Eğer gelişmiş koşullar doluysa bölümü aç
   const hasAdvanced = (s.xday_period > 0 || s.sentiment_sell_below < 0 || s.sentiment_buy_above > 0 || s.target_price > 0);
   const adv = document.getElementById('editAdvanced');
@@ -1550,7 +1696,7 @@ function selectT212Ticker(targetId, resultsId, ticker) {
 
 // ─── Formül ───────────────────────────────────────────────────────────────────
 
-function evalFormula(formula, stock) {
+function evalFormula(formula, stock, allowNegative = false) {
   if (!formula || !formula.trim()) return null;
   try {
     const price = stock.current_price || 0;
@@ -1559,7 +1705,9 @@ function evalFormula(formula, stock) {
     const result = new Function('price', 'ref', 'drop',
       `"use strict"; return (${formula.trim()})`)(price, ref, drop);
     const n = parseFloat(result);
-    return isFinite(n) && n > 0 ? n : null;
+    if (!isFinite(n) || n === 0) return null;
+    if (!allowNegative && n < 0) return null;
+    return n;
   } catch(_) { return null; }
 }
 
@@ -1694,7 +1842,8 @@ function livePreview() {
     const s = lastState.stocks[ticker];
     const vals = {}, changed = {};
     for (const f of activeCols) {
-      const r = evalFormula(formulas[f], s);
+      let r = evalFormula(formulas[f], s, f === 'sentiment_sell_below');
+      if (r !== null && f === 'sentiment_sell_below' && r > 0) r = -r;
       if (r !== null) { vals[f] = r; changed[f] = true; } else vals[f] = s[f];
     }
     const cells = activeCols.map(f => {
@@ -1722,7 +1871,11 @@ async function applyFormulas() {
   let ok = 0, err = 0;
   for (const ticker of tickers) {
     const s = lastState.stocks[ticker];
-    const ev = f => evalFormula(formulas[f], s);
+    const ev = f => {
+      let v = evalFormula(formulas[f], s, f === 'sentiment_sell_below');
+      if (v !== null && f === 'sentiment_sell_below' && v > 0) v = -v;
+      return v;
+    };
     const payload = {
       ticker,
       t212_ticker:          s.t212_ticker,
@@ -1745,6 +1898,232 @@ async function applyFormulas() {
   }
   if (err === 0) bootstrap.Modal.getInstance(document.getElementById('formulaModal')).hide();
   else alert(currentLang === 'tr' ? `${ok} güncellendi, ${err} hata` : `${ok} updated, ${err} error(s)`);
+}
+
+// ─── Info Graph ───────────────────────────────────────────────────────────────
+const _IG_PALETTE = ['#58a6ff','#3fb950','#f85149','#d29922','#bc8cff','#f0883e','#79c0ff','#56d364','#ffa657','#ff7b72'];
+let _igCharts = {};
+
+function _destroyIGCharts() {
+  Object.values(_igCharts).forEach(c => { try { c.destroy(); } catch(_) {} });
+  _igCharts = {};
+}
+
+function openInfoGraph() {
+  new bootstrap.Modal(document.getElementById('infoGraphModal')).show();
+}
+
+document.getElementById('infoGraphModal').addEventListener('shown.bs.modal', () => {
+  _destroyIGCharts();
+  _renderInfoGraph(lastState?.trades || []);
+});
+document.getElementById('infoGraphModal').addEventListener('hidden.bs.modal', _destroyIGCharts);
+
+function _igTheme() {
+  const dark = currentTheme !== 'frost';
+  return {
+    text:    dark ? '#c9d1d9' : '#1e3050',
+    subtext: dark ? '#6e7681' : '#7a96b4',
+    grid:    dark ? '#30363d' : '#cdd8e8',
+    bg:      dark ? '#161b22' : '#ffffff',
+  };
+}
+
+function _igNoChart(canvasId, msg) {
+  const el = document.getElementById(canvasId);
+  if (el) el.parentElement.innerHTML =
+    `<div class="d-flex align-items-center justify-content-center h-100 text-secondary" style="font-size:0.8rem;font-style:italic">${msg}</div>`;
+}
+
+function _renderInfoGraph(trades) {
+  const th   = _igTheme();
+  const isTR = currentLang === 'tr';
+  const noD  = isTR ? 'Veri yok' : 'No data';
+
+  document.getElementById('ig-timestamp').textContent =
+    (isTR ? 'Rapor tarihi: ' : 'Report date: ') +
+    new Date().toLocaleString(isTR ? 'tr-TR' : 'en-US');
+
+  if (!trades.length) {
+    document.getElementById('ig-nodata').style.display = '';
+    document.getElementById('ig-content').style.display = 'none';
+    return;
+  }
+  document.getElementById('ig-nodata').style.display = 'none';
+  document.getElementById('ig-content').style.display = '';
+
+  const buys        = trades.filter(t => t.side === 'BUY');
+  const sells       = trades.filter(t => t.side === 'SELL');
+  const closed      = sells.filter(t => t.pnl != null);
+  const wins        = closed.filter(t => t.pnl > 0);
+  const losses      = closed.filter(t => t.pnl <= 0);
+  const totalPnl    = closed.reduce((s, t) => s + t.pnl, 0);
+  const totalVol    = buys.reduce((s, t) => s + t.price * t.quantity, 0);
+  const winRate     = closed.length ? wins.length / closed.length * 100 : 0;
+  const avgPnl      = closed.length ? totalPnl / closed.length : 0;
+  const bestTrade   = closed.length ? closed.reduce((a, b) => b.pnl > a.pnl ? b : a) : null;
+  const worstTrade  = closed.length ? closed.reduce((a, b) => b.pnl < a.pnl ? b : a) : null;
+  const openCount   = Math.max(0, buys.length - sells.length);
+  const tickers     = [...new Set(trades.map(t => t.ticker))];
+  const pnlC = totalPnl >= 0 ? 'text-success' : 'text-danger';
+  const winC = winRate >= 50 ? 'text-success' : 'text-warning';
+
+  // ── KPI Cards ─────────────────────────────────────────────────────────────────
+  const kpis = [
+    { icon:'bi-shuffle',           title:isTR?'Toplam İşlem':'Total Trades',     val:trades.length,                                                          cls:'text-info',    sub:`${buys.length} ${isTR?'alım':'buy'} · ${sells.length} ${isTR?'satış':'sell'}` },
+    { icon:'bi-trophy-fill',       title:isTR?'Kazanma Oranı':'Win Rate',         val:winRate.toFixed(1)+'%',                                                 cls:winC,           sub:`${wins.length}W / ${losses.length}L` },
+    { icon:'bi-currency-dollar',   title:isTR?'Gerçekleşen K/Z':'Realized P&L',  val:(totalPnl>=0?'+':'')+'$'+totalPnl.toFixed(2),                           cls:pnlC,           sub:`${isTR?'Ort':'Avg'} ${avgPnl>=0?'+':''}$${avgPnl.toFixed(2)}` },
+    { icon:'bi-bank2',             title:isTR?'Toplam Sermaye':'Capital Deployed',val:'$'+totalVol.toFixed(2),                                                cls:'text-info',    sub:isTR?'Toplam alım hacmi':'Total buy volume' },
+    bestTrade  ? { icon:'bi-arrow-up-circle-fill',   title:isTR?'En İyi İşlem':'Best Trade',  val:'+$'+bestTrade.pnl.toFixed(2),  cls:'text-success', sub:bestTrade.ticker  } : null,
+    worstTrade ? { icon:'bi-arrow-down-circle-fill', title:isTR?'En Kötü İşlem':'Worst Trade',val:'$'+worstTrade.pnl.toFixed(2),  cls:'text-danger',  sub:worstTrade.ticker } : null,
+  ].filter(Boolean);
+
+  document.getElementById('ig-kpi-row').innerHTML = kpis.map(c => `
+    <div class="col">
+      <div class="card text-center py-2 px-1 h-100" style="border-radius:8px">
+        <i class="bi ${c.icon} fs-4 ${c.cls} mb-1"></i>
+        <div class="fw-bold ${c.cls}" style="font-size:1.05rem;line-height:1.2">${c.val}</div>
+        <div class="text-secondary" style="font-size:0.67rem;font-weight:600;text-transform:uppercase;letter-spacing:.5px">${c.title}</div>
+        <div class="text-secondary" style="font-size:0.66rem">${c.sub}</div>
+      </div>
+    </div>`).join('');
+
+  // ── Summary paragraph ──────────────────────────────────────────────────────────
+  document.getElementById('ig-summary').innerHTML = isTR
+    ? `Toplam <b>${trades.length}</b> işlem gerçekleşti (<b>${tickers.join(', ')}</b>). `
+      + (closed.length ? `Kapatılan <b>${closed.length}</b> pozisyonun <b>${wins.length}</b>'i kârlı (%${winRate.toFixed(0)} kazanma oranı). ` : '')
+      + `Gerçekleşen toplam K/Z: <b class="${pnlC}">${totalPnl>=0?'+':''}$${totalPnl.toFixed(2)}</b>. `
+      + `Devreye alınan toplam sermaye: <b>$${totalVol.toFixed(2)}</b>.`
+      + (bestTrade  ? ` En iyi işlem: <b class="text-success">${bestTrade.ticker} +$${bestTrade.pnl.toFixed(2)}</b>.` : '')
+      + (openCount  ? ` Şu an <b>${openCount}</b> açık pozisyon mevcut.` : '')
+    : `<b>${trades.length}</b> trades executed across <b>${tickers.join(', ')}</b>. `
+      + (closed.length ? `<b>${wins.length}</b> of <b>${closed.length}</b> closed positions were profitable (${winRate.toFixed(0)}% win rate). ` : '')
+      + `Total realized P&L: <b class="${pnlC}">${totalPnl>=0?'+':''}$${totalPnl.toFixed(2)}</b>. `
+      + `Total capital deployed: <b>$${totalVol.toFixed(2)}</b>.`
+      + (bestTrade  ? ` Best trade: <b class="text-success">${bestTrade.ticker} +$${bestTrade.pnl.toFixed(2)}</b>.` : '')
+      + (openCount  ? ` Currently <b>${openCount}</b> open position(s).` : '');
+
+  const chartDefaults = { responsive:true, maintainAspectRatio:false };
+
+  // ── 1. Win / Loss Donut ────────────────────────────────────────────────────────
+  _igCharts.wl = new Chart(document.getElementById('ig-c-winloss'), {
+    type: 'doughnut',
+    data: {
+      labels: [isTR?'Kazanılan':'Wins', isTR?'Kaybedilen':'Losses', isTR?'Açık Poz.':'Open Pos.'],
+      datasets: [{ data:[wins.length, losses.length, openCount],
+        backgroundColor:['#3fb950','#f85149','#58a6ff'], borderWidth:2, borderColor:th.bg }]
+    },
+    options: { ...chartDefaults, cutout:'62%',
+      plugins:{ legend:{ position:'bottom', labels:{ color:th.text, boxWidth:12, padding:10 } },
+        tooltip:{ callbacks:{ label:ctx=>` ${ctx.label}: ${ctx.raw}` } } } }
+  });
+
+  // ── 2. Realized P&L by Ticker (horizontal bar) ────────────────────────────────
+  const pnlByTk = {};
+  closed.forEach(t => { pnlByTk[t.ticker] = (pnlByTk[t.ticker]||0) + t.pnl; });
+  const pnlTks = Object.keys(pnlByTk).sort((a,b) => pnlByTk[b] - pnlByTk[a]);
+  if (pnlTks.length) {
+    _igCharts.pnlTk = new Chart(document.getElementById('ig-c-pnl-ticker'), {
+      type:'bar',
+      data:{ labels:pnlTks, datasets:[{
+        label: isTR?'K/Z ($)':'P&L ($)',
+        data: pnlTks.map(k => +pnlByTk[k].toFixed(2)),
+        backgroundColor: pnlTks.map(k => pnlByTk[k]>=0 ? 'rgba(63,185,80,.55)' : 'rgba(248,81,73,.55)'),
+        borderColor:     pnlTks.map(k => pnlByTk[k]>=0 ? '#3fb950' : '#f85149'),
+        borderWidth:1, borderRadius:5,
+      }]},
+      options:{ ...chartDefaults, indexAxis:'y',
+        scales:{
+          x:{ grid:{color:th.grid}, ticks:{color:th.text, callback:v=>`$${v}`} },
+          y:{ grid:{color:th.grid}, ticks:{color:th.text} },
+        },
+        plugins:{ legend:{display:false} } }
+    });
+  } else _igNoChart('ig-c-pnl-ticker', noD);
+
+  // ── 3. Exit Reasons Donut ──────────────────────────────────────────────────────
+  const rLabels = { signal:t('trades.signal'), stop_loss:t('trades.stopLoss'), take_profit:t('trades.takeProfit'), manual:t('trades.manual') };
+  const rColors = { signal:'#58a6ff', stop_loss:'#f85149', take_profit:'#3fb950', manual:'#d29922' };
+  const rCounts = {};
+  sells.forEach(s2 => { rCounts[s2.reason] = (rCounts[s2.reason]||0)+1; });
+  const rKeys = Object.keys(rCounts);
+  if (rKeys.length) {
+    _igCharts.reasons = new Chart(document.getElementById('ig-c-reasons'), {
+      type:'doughnut',
+      data:{ labels:rKeys.map(k=>rLabels[k]||k), datasets:[{
+        data:rKeys.map(k=>rCounts[k]),
+        backgroundColor:rKeys.map(k=>rColors[k]||'#bc8cff'), borderWidth:2, borderColor:th.bg,
+      }]},
+      options:{ ...chartDefaults, cutout:'55%',
+        plugins:{ legend:{ position:'bottom', labels:{ color:th.text, boxWidth:12, padding:10 } } } }
+    });
+  } else _igNoChart('ig-c-reasons', noD);
+
+  // ── 4. P&L Over Time (monthly bar) ────────────────────────────────────────────
+  const pnlByMo = {};
+  closed.forEach(t => {
+    const d = new Date(t.timestamp);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    pnlByMo[key] = (pnlByMo[key]||0) + t.pnl;
+  });
+  const moKeys = Object.keys(pnlByMo).sort();
+  if (moKeys.length) {
+    _igCharts.monthly = new Chart(document.getElementById('ig-c-monthly'), {
+      type:'bar',
+      data:{ labels:moKeys, datasets:[{
+        label: isTR?'Aylık K/Z ($)':'Monthly P&L ($)',
+        data: moKeys.map(k => +pnlByMo[k].toFixed(2)),
+        backgroundColor: moKeys.map(k => pnlByMo[k]>=0 ? 'rgba(63,185,80,.55)' : 'rgba(248,81,73,.55)'),
+        borderColor:     moKeys.map(k => pnlByMo[k]>=0 ? '#3fb950' : '#f85149'),
+        borderWidth:1, borderRadius:4,
+      }]},
+      options:{ ...chartDefaults,
+        scales:{
+          x:{ grid:{color:th.grid}, ticks:{color:th.text} },
+          y:{ grid:{color:th.grid}, ticks:{color:th.text, callback:v=>`$${v}`} },
+        },
+        plugins:{ legend:{display:false} } }
+    });
+  } else _igNoChart('ig-c-monthly', noD);
+
+  // ── 5. Capital by Ticker (pie) ─────────────────────────────────────────────────
+  const volByTk = {};
+  buys.forEach(b => { volByTk[b.ticker] = (volByTk[b.ticker]||0) + b.price * b.quantity; });
+  const volTks = Object.keys(volByTk).sort((a,b) => volByTk[b]-volByTk[a]);
+  if (volTks.length) {
+    _igCharts.vol = new Chart(document.getElementById('ig-c-volume'), {
+      type:'pie',
+      data:{ labels:volTks, datasets:[{
+        data:volTks.map(k => +volByTk[k].toFixed(2)),
+        backgroundColor:volTks.map((_,i) => _IG_PALETTE[i % _IG_PALETTE.length]),
+        borderWidth:2, borderColor:th.bg,
+      }]},
+      options:{ ...chartDefaults,
+        plugins:{
+          legend:{ position:'bottom', labels:{ color:th.text, boxWidth:12, padding:10 } },
+          tooltip:{ callbacks:{ label:ctx => ` ${ctx.label}: $${(+ctx.raw).toFixed(2)} (${totalVol?((+ctx.raw/totalVol*100).toFixed(1)):'0'}%)` } },
+        } }
+    });
+  } else _igNoChart('ig-c-volume', noD);
+
+  // ── 6. Trade Count by Ticker (grouped bar) ────────────────────────────────────
+  const allTks = [...new Set(trades.map(t=>t.ticker))].sort();
+  const buyCnt={}, sellCnt={};
+  buys.forEach(b  => { buyCnt[b.ticker]   = (buyCnt[b.ticker]  ||0)+1; });
+  sells.forEach(s2=> { sellCnt[s2.ticker] = (sellCnt[s2.ticker]||0)+1; });
+  _igCharts.cnt = new Chart(document.getElementById('ig-c-tradecount'), {
+    type:'bar',
+    data:{ labels:allTks, datasets:[
+      { label:isTR?'Alım':'Buy',   data:allTks.map(tk=>buyCnt[tk]||0),  backgroundColor:'rgba(63,185,80,.6)',  borderColor:'#3fb950', borderWidth:1, borderRadius:4 },
+      { label:isTR?'Satış':'Sell', data:allTks.map(tk=>sellCnt[tk]||0), backgroundColor:'rgba(248,81,73,.6)', borderColor:'#f85149', borderWidth:1, borderRadius:4 },
+    ]},
+    options:{ ...chartDefaults,
+      scales:{
+        x:{ grid:{color:th.grid}, ticks:{color:th.text} },
+        y:{ grid:{color:th.grid}, ticks:{color:th.text, stepSize:1} },
+      },
+      plugins:{ legend:{ labels:{ color:th.text, boxWidth:12 } } } }
+  });
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
